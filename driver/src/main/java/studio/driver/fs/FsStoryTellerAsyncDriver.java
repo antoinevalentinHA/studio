@@ -143,11 +143,15 @@ public class FsStoryTellerAsyncDriver {
             return CompletableFuture.failedFuture(new StoryTellerException("No device plugged"));
         }
         FsDeviceInfos infos = new FsDeviceInfos();
-        try {
-            String mdFile = this.partitionMountPoint + File.separator + DEVICE_METADATA_FILENAME;
-            LOGGER.finest("Reading device infos from file: " + mdFile);
-            FileInputStream deviceMetadataFis = new FileInputStream(mdFile);
-
+        String mdFile = this.partitionMountPoint + File.separator + DEVICE_METADATA_FILENAME;
+        LOGGER.finest("Reading device infos from file: " + mdFile);
+        // try-with-resources, because the stream must be released on every path out of this method,
+        // not just the nominal one. The explicit close() this replaces was skipped by the early
+        // return for an unsupported metadata version and by every exception raised while parsing, so
+        // a device with an unreadable `.md` leaked one handle per call — and getDeviceInfos runs on
+        // every /infos request and at the start of every transfer. On Windows the retained handle
+        // keeps `.md` locked. Parsing, version dispatch and error mapping below are unchanged.
+        try (FileInputStream deviceMetadataFis = new FileInputStream(mdFile)) {
             // MD file format version
             short mdVersion = readLittleEndianShort(deviceMetadataFis);
             LOGGER.finest("Device metadata format version: " + mdVersion);
@@ -158,8 +162,6 @@ public class FsStoryTellerAsyncDriver {
             } else {
                 return CompletableFuture.failedFuture(new StoryTellerException("Unsupported device metadata format version: " + mdVersion));
             }
-
-            deviceMetadataFis.close();
 
             // SD card size and used space
             File mdFd = new File(mdFile);
