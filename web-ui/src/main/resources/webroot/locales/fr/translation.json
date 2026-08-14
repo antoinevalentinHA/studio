@@ -156,6 +156,10 @@
   },
 
   "toasts": {
+    "channel": {
+      "lost": "Connexion au suivi interrompue. Un transfert en cours n'est pas affecté. Reconnexion...",
+      "restored": "Connexion au suivi rétablie."
+    },
     "library": {
       "loading": "Chargement de la bibliothèque...",
       "fetching": "Récupération des packs d'histoires de la bibliothèque...",
@@ -166,6 +170,7 @@
       "adding": "Ajout du pack à la bibliothèque...",
       "added": "Pack ajouté à la bibliothèque.",
       "addingFailed": "Échec de l'ajout du pack à la bibliothèque.",
+      "trackingLost": "Suivi du transfert interrompu. L'extraction est toujours en cours : son état sera vérifié à la reconnexion.",
       "refreshingFailed": "Échec du rafraîchissement de la bibliothèque.",
       "downloading": "Téléchargement du pack d'histoires depuis la bibliothèque...",
       "downloaded": "Pack d'histoires téléchargé.",
@@ -203,6 +208,7 @@
       "adding": "Ajout du pack à l'appareil...",
       "added": "Pack ajouté à l'appareil.",
       "addingFailed": "Échec de l'ajout du pack à l'appareil.",
+      "trackingLost": "Suivi du transfert interrompu. Le transfert est toujours en cours sur l'appareil : ne débranchez pas. L'état sera vérifié à la reconnexion.",
       "removing": "Retrait du pack de l'appareil...",
       "removed": "Pack retiré de l'appareil.",
       "removingFailed": "Échec du retrait du pack de l'appareil.",

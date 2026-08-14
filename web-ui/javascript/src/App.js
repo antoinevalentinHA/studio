@@ -7,7 +7,7 @@
 import React from 'react';
 import { connect } from 'react-redux';
 import { ToastContainer, toast } from 'react-toastify';
-import EventBus from 'vertx3-eventbus-client';
+import {createEventBusChannel, CHANNEL_OPEN, CHANNEL_CLOSED} from './services/eventBusChannel';
 import { withTranslation } from 'react-i18next';
 import marked from 'marked';
 import 'react-toastify/dist/ReactToastify.css';
@@ -22,6 +22,7 @@ import {simplifiedSample} from "./utils/sample";
 import {
     actionCheckDevice,
     actionDevicePlugged,
+    actionRefreshDevice,
     deviceUnplugged,
     actionLoadLibrary,
     setEditorDiagram,
@@ -39,12 +40,17 @@ import {
 import './App.css';
 
 
+/** Stable id so the channel notice updates in place instead of stacking on every reconnection. */
+const CHANNEL_TOAST_ID = 'eventbus-channel';
+
+
 class App extends React.Component {
 
     constructor(props) {
         super(props);
         this.state = {
-            eventBus: null,
+            channel: null,
+            channelConnected: null,
             shown: null,
             viewer: null,
             announce: null,
@@ -54,31 +60,35 @@ class App extends React.Component {
 
     componentDidMount() {
         const { t } = this.props;
-        // Set up vert.x eventbus
-        console.log("Setting up vert.x event bus...");
-        let eventBus = new EventBus('http://localhost:8080/eventbus');
-        this.setState({eventBus}, () => {
-            // eslint-disable-next-line
-            this.state.eventBus.onopen = () => {
-                console.log("vert.x event bus open. Registering handlers...");
-                this.state.eventBus.registerHandler('storyteller.plugged', (error, message) => {
-                    console.log("Received `storyteller.plugged` event from vert.x event bus.");
-                    console.log(message.body);
-                    toast.info(t('toasts.device.monitoring.plugged'));
-                    this.props.onDevicePlugged(message.body);
-                });
-                this.state.eventBus.registerHandler('storyteller.unplugged', (error, message) => {
-                    console.log("Received `storyteller.unplugged` event from vert.x event bus.");
-                    toast.info(t('toasts.device.monitoring.unplugged'));
-                    this.props.onDeviceUnplugged();
-                });
-                this.state.eventBus.registerHandler('storyteller.failure', (error, message) => {
-                    console.log("Received `storyteller.failure` event from vert.x event bus.");
-                    toast.error(t('toasts.device.monitoring.failure'));
-                    this.props.onDeviceUnplugged();
-                });
-            };
 
+        // The channel is created and fully wired synchronously. The previous code assigned `onopen`
+        // from inside a setState callback, one React tick later; the underlying client fires onopen
+        // at most once and only if it is already assigned, so a socket that opened during that tick
+        // left the application with no device handlers at all for the lifetime of the page.
+        console.log("Setting up vert.x event bus channel...");
+        const channel = createEventBusChannel('http://localhost:8080/eventbus', {
+            onStateChange: state => this.onChannelStateChange(state)
+        });
+
+        // Subscribing is safe before the socket is open: the channel records the subscription and
+        // applies it on every (re)connection.
+        channel.subscribe('storyteller.plugged', (error, message) => {
+            console.log("Received `storyteller.plugged` event from vert.x event bus.");
+            toast.info(t('toasts.device.monitoring.plugged'));
+            this.props.onDevicePlugged(message.body);
+        });
+        channel.subscribe('storyteller.unplugged', (error, message) => {
+            console.log("Received `storyteller.unplugged` event from vert.x event bus.");
+            toast.info(t('toasts.device.monitoring.unplugged'));
+            this.props.onDeviceUnplugged();
+        });
+        channel.subscribe('storyteller.failure', (error, message) => {
+            console.log("Received `storyteller.failure` event from vert.x event bus.");
+            toast.error(t('toasts.device.monitoring.failure'));
+            this.props.onDeviceUnplugged();
+        });
+
+        this.setState({channel}, () => {
             // Check whether device is already plugged on startup
             this.props.checkDevice();
 
@@ -94,6 +104,32 @@ class App extends React.Component {
 
             this.props.dispatchShowLibrary();
         });
+    }
+
+    onChannelStateChange = (state) => {
+        const { t } = this.props;
+        if (state === CHANNEL_CLOSED) {
+            // Say what is actually true: the browser lost its notification channel. Whatever the
+            // backend is doing with a transfer is unaffected, and must not be reported as failed.
+            console.warn('event bus channel lost; reconnecting');
+            this.setState({channelConnected: false});
+            toast.warn(t('toasts.channel.lost'), {toastId: CHANNEL_TOAST_ID, autoClose: false});
+        } else if (state === CHANNEL_OPEN) {
+            if (this.state.channelConnected === false) {
+                console.log('event bus channel restored; refreshing device state');
+                toast.update(CHANNEL_TOAST_ID, {type: toast.TYPE.SUCCESS, render: t('toasts.channel.restored'), autoClose: 5000});
+                // The backend may have published a verdict while the channel was down; those events
+                // are not replayed. Re-reading the device is what settles the question.
+                this.props.refreshDevice();
+            }
+            this.setState({channelConnected: true});
+        }
+    };
+
+    componentWillUnmount() {
+        if (this.state.channel) {
+            this.state.channel.close();
+        }
     }
 
     componentWillReceiveProps(nextProps, nextContext) {
@@ -153,7 +189,7 @@ class App extends React.Component {
     render() {
         const { t, i18n } = this.props;
         return (
-            <AppContext.Provider value={{eventBus: this.state.eventBus}}>
+            <AppContext.Provider value={{channel: this.state.channel}}>
                 <div className="App">
                     <ToastContainer/>
                     {this.state.announce && <Modal id={`announce-dialog`}
@@ -213,6 +249,7 @@ const mapDispatchToProps = (dispatch, ownProps) => ({
     checkDevice: () => dispatch(actionCheckDevice(ownProps.t)),
     onDevicePlugged: (metadata) => dispatch(actionDevicePlugged(metadata, ownProps.t)),
     onDeviceUnplugged: () => dispatch(deviceUnplugged()),
+    refreshDevice: () => dispatch(actionRefreshDevice(ownProps.t)),
     loadLibrary: () => dispatch(actionLoadLibrary(ownProps.t)),
     setEditorDiagram: (diagram, filename) => dispatch(setEditorDiagram(diagram, filename)),
     dispatchShowLibrary: () => dispatch(showLibrary()),

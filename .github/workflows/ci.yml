@@ -59,3 +59,38 @@ jobs:
           path: '**/target/surefire-reports/**'
           if-no-files-found: ignore
           retention-days: 7
+
+  # The web UI owns the transfer monitoring channel, so it needs its own verdict. Linux only: the
+  # code under test is platform-independent, unlike the filesystem semantics the Java job checks on
+  # both platforms. Node 12 matches the version the Maven frontend build pins, so CI and a local
+  # `mvn package` run the same toolchain.
+  web-ui-tests:
+    name: Web UI tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web-ui/javascript
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 12
+        uses: actions/setup-node@v4
+        with:
+          node-version: '12'
+          cache: yarn
+          cache-dependency-path: web-ui/javascript/yarn.lock
+
+      # --frozen-lockfile makes an out-of-date yarn.lock a build failure rather than a silent
+      # rewrite of a tracked file.
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run tests
+        run: yarn test --watchAll=false
+        env:
+          CI: true
+
+      - name: Verify the build left tracked files untouched
+        run: git diff --exit-code
