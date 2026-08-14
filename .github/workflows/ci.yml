@@ -1,0 +1,61 @@
+name: CI
+
+# Complements the `Nightly Build` workflow (maven.yml), which packages and publishes an artifact
+# from master. This one exists to give pull requests a verdict: it compiles every Java module and
+# runs the test suite on both Linux and Windows.
+#
+# Windows is not optional here. Several behaviours this project depends on — DOS file attributes,
+# whether a hidden file can be opened for writing, whether ATOMIC_MOVE is available — differ from
+# Linux, and the device transfer path is written against them.
+
+on:
+  pull_request:
+  push:
+    branches: [ master ]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Report both platforms on every run: a Windows-only failure is exactly what this matrix is for.
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+          cache: maven
+
+      # The frontend goals are skipped on purpose: they download Node 12 and run `yarn install`,
+      # which costs ~2.5 minutes per platform, needs the npm registry, and can rewrite the tracked
+      # yarn.lock. There is no JavaScript test suite to run, and skipping them still compiles every
+      # Java module, web-ui included. Packaging the real bundle stays the nightly build's job.
+      - name: Build and test
+        shell: bash
+        run: mvn -B -Dskip.installnodeyarn=true -Dskip.yarn=true test
+
+      # The build must never dirty a tracked file. This guards against a plugin quietly rewriting
+      # something in the working tree.
+      - name: Verify the build left tracked files untouched
+        shell: bash
+        run: git diff --exit-code
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports-${{ matrix.os }}
+          path: '**/target/surefire-reports/**'
+          if-no-files-found: ignore
+          retention-days: 7

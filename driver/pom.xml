@@ -38,6 +38,21 @@
             <groupId>commons-io</groupId>
             <artifactId>commons-io</artifactId>
         </dependency>
+
+        <!-- Test scope only: not part of any runtime or distributed classpath. -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Instantiates FsStoryTellerAsyncDriver without running its constructor, which would
+             initialize libusb, spawn worker threads and register a JVM shutdown hook. See
+             DriverTestSupport (test sources) for the rationale. -->
+        <dependency>
+            <groupId>org.objenesis</groupId>
+            <artifactId>objenesis</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
 

@@ -65,6 +65,13 @@
             <artifactId>jump3r</artifactId>
             <version>1.0.5</version>
         </dependency>
+
+        <!-- Test scope only: not part of any runtime or distributed classpath. -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
 </project>
