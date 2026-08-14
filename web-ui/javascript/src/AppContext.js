@@ -8,5 +8,7 @@ import React from 'react';
 
 
 export const AppContext = React.createContext({
-    eventBus: null
+    // The event bus channel (see services/eventBusChannel). Never the raw vertx client: callers
+    // must not have to reason about socket state, nor be able to trigger INVALID_STATE_ERR.
+    channel: null
 });

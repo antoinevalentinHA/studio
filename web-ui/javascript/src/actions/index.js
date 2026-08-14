@@ -11,6 +11,7 @@ import {Mutex, withTimeout} from 'async-mutex';
 import IssueReportToast from "../components/IssueReportToast";
 import PackDiagramModel from "../components/diagram/models/PackDiagramModel";
 import {fetchDeviceInfos, fetchDevicePacks, addFromLibrary, removeFromDevice, reorderPacks, addToLibrary} from '../services/device';
+import {SUBSCRIBED} from '../services/eventBusChannel';
 import {fetchLibraryInfos, fetchLibraryPacks, downloadFromLibrary, uploadToLibrary, convertInLibrary, removeFromLibrary} from '../services/library';
 import {fetchEvergreenInfos, fetchEvergreenLatestRelease, fetchEvergreenAnnounce} from '../services/evergreen';
 import {generateFilename, sortPacks} from "../utils/packs";
@@ -153,18 +154,32 @@ export const actionAddFromLibrary = (uuid, path, format, driver, context, t) => 
                     let toastId = toast(t('toasts.device.adding'), { autoClose: false });
                     return addFromLibrary(uuid, path)
                         .then(resp => {
-                            // Monitor transfer progress
-                            let transferId = resp.transferId;
-                            context.eventBus.registerHandler('storyteller.transfer.'+transferId+'.progress', (error, message) => {
-                                console.log("Received `storyteller.transfer."+transferId+".progress` event from vert.x event bus.");
-                                console.log(message.body);
+                            // From here on the backend has accepted the transfer and is running it.
+                            // Nothing that happens to the monitoring channel below changes that, so
+                            // no failure reported from this point may claim the transfer failed.
+                            const transferId = resp.transferId;
+                            const progressAddress = 'storyteller.transfer.' + transferId + '.progress';
+                            const doneAddress = 'storyteller.transfer.' + transferId + '.done';
+                            console.log('transfer ' + transferId + ': accepted by the backend (add to device)');
+
+                            let released = false;
+                            const releaseOnce = () => {
+                                if (!released) {
+                                    released = true;
+                                    release();
+                                }
+                            };
+
+                            const onProgress = (error, message) => {
                                 if (message.body.progress < 1) {
                                     toast.update(toastId, {progress: message.body.progress, autoClose: false});
                                 }
-                            });
-                            context.eventBus.registerHandler('storyteller.transfer.'+transferId+'.done', (error, message) => {
-                                console.log("Received `storyteller.transfer."+transferId+".done` event from vert.x event bus.");
-                                console.log(message.body);
+                            };
+                            const onDone = (error, message) => {
+                                console.log('transfer ' + transferId + ': backend reported ' + (message.body.success ? 'success' : 'failure'));
+                                // Release the subscriptions so repeated transfers cannot pile up.
+                                context.channel.unsubscribe(progressAddress, onProgress);
+                                context.channel.unsubscribe(doneAddress, onDone);
                                 if (message.body.success) {
                                     toast.update(toastId, {progress: null, type: toast.TYPE.SUCCESS, render: t('toasts.device.added'), autoClose: 5000});
                                     // Refresh device metadata and packs list
@@ -172,11 +187,25 @@ export const actionAddFromLibrary = (uuid, path, format, driver, context, t) => 
                                 } else {
                                     toast.update(toastId, {progress: null, type: toast.TYPE.ERROR, render: <IssueReportToast content={<>{t('toasts.device.addingFailed')}</>} />, autoClose: false });
                                 }
-                                // Always release the mutex
-                                release();
-                            });
+                                releaseOnce();
+                            };
+
+                            context.channel.subscribe(progressAddress, onProgress);
+                            const doneSubscription = context.channel.subscribe(doneAddress, onDone);
+
+                            if (doneSubscription !== SUBSCRIBED) {
+                                // The channel is down, so the outcome cannot be observed. The transfer
+                                // is still running on the backend: say that, and do not claim a failure.
+                                // The subscription stays recorded, so if the channel comes back before
+                                // the backend publishes its verdict, onDone still resolves this toast.
+                                console.warn('transfer ' + transferId + ': monitoring channel unavailable, transfer continues on the backend');
+                                toast.update(toastId, {progress: null, type: toast.TYPE.WARNING, render: t('toasts.device.trackingLost'), autoClose: false});
+                                releaseOnce();
+                            }
                         })
                         .catch(e => {
+                            // Only a real request failure reaches this point: subscribing can no
+                            // longer throw, so a dropped channel never lands here.
                             console.error('failed to add pack to device', e);
                             toast.update(toastId, { type: toast.TYPE.ERROR, render: <IssueReportToast content={<>{t('toasts.device.addingFailed')}</>} error={e} />, autoClose: false });
                             // Always release the mutex
@@ -257,18 +286,30 @@ export const actionAddToLibrary = (uuid, driver, context, t) => {
                 let toastId = toast(t('toasts.library.adding'), { autoClose: false });
                 return addToLibrary(uuid, driver)
                     .then(resp => {
-                        // Monitor transfer progress
-                        let transferId = resp.transferId;
-                        context.eventBus.registerHandler('storyteller.transfer.'+transferId+'.progress', (error, message) => {
-                            console.log("Received `storyteller.transfer."+transferId+".progress` event from vert.x event bus.");
-                            console.log(message.body);
+                        // Same contract as actionAddFromLibrary: past this point the extraction is
+                        // running on the backend and the channel's health says nothing about it.
+                        const transferId = resp.transferId;
+                        const progressAddress = 'storyteller.transfer.' + transferId + '.progress';
+                        const doneAddress = 'storyteller.transfer.' + transferId + '.done';
+                        console.log('transfer ' + transferId + ': accepted by the backend (add to library)');
+
+                        let released = false;
+                        const releaseOnce = () => {
+                            if (!released) {
+                                released = true;
+                                release();
+                            }
+                        };
+
+                        const onProgress = (error, message) => {
                             if (message.body.progress < 1) {
                                 toast.update(toastId, {progress: message.body.progress, autoClose: false});
                             }
-                        });
-                        context.eventBus.registerHandler('storyteller.transfer.'+transferId+'.done', (error, message) => {
-                            console.log("Received `storyteller.transfer."+transferId+".done` event from vert.x event bus.");
-                            console.log(message.body);
+                        };
+                        const onDone = (error, message) => {
+                            console.log('transfer ' + transferId + ': backend reported ' + (message.body.success ? 'success' : 'failure'));
+                            context.channel.unsubscribe(progressAddress, onProgress);
+                            context.channel.unsubscribe(doneAddress, onDone);
                             if (message.body.success) {
                                 toast.update(toastId, {progress: null, type: toast.TYPE.SUCCESS, render: t('toasts.library.added'), autoClose: 5000});
                                 // Refresh device metadata and packs list
@@ -276,9 +317,17 @@ export const actionAddToLibrary = (uuid, driver, context, t) => {
                             } else {
                                 toast.update(toastId, {progress: null, type: toast.TYPE.ERROR, render: <IssueReportToast content={<>{t('toasts.library.addingFailed')}</>} />, autoClose: false });
                             }
-                            // Always release the mutex
-                            release();
-                        });
+                            releaseOnce();
+                        };
+
+                        context.channel.subscribe(progressAddress, onProgress);
+                        const doneSubscription = context.channel.subscribe(doneAddress, onDone);
+
+                        if (doneSubscription !== SUBSCRIBED) {
+                            console.warn('transfer ' + transferId + ': monitoring channel unavailable, extraction continues on the backend');
+                            toast.update(toastId, {progress: null, type: toast.TYPE.WARNING, render: t('toasts.library.trackingLost'), autoClose: false});
+                            releaseOnce();
+                        }
                     })
                     .catch(e => {
                         console.error('failed to add pack to library', e);

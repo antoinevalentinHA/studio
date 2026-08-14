@@ -156,6 +156,10 @@
   },
 
   "toasts": {
+    "channel": {
+      "lost": "Lost connection to transfer monitoring. A transfer in progress is not affected. Reconnecting...",
+      "restored": "Connection to transfer monitoring restored."
+    },
     "library": {
       "loading": "Loading library...",
       "fetching": "Fetching library's story packs...",
@@ -166,6 +170,7 @@
       "adding": "Adding pack to local library...",
       "added": "Pack added to library.",
       "addingFailed": "Failed to add pack to library.",
+      "trackingLost": "Transfer monitoring was interrupted. The extraction is still running: its state will be checked when the connection is restored.",
       "refreshingFailed": "Failed to refresh library.",
       "downloading": "Downloading pack from library...",
       "downloaded": "Pack downloaded from library.",
@@ -203,6 +208,7 @@
       "adding": "Adding pack to device...",
       "added": "Pack added to device.",
       "addingFailed": "Failed to add pack to device.",
+      "trackingLost": "Transfer monitoring was interrupted. The transfer is still running on the device: do not unplug it. Its state will be checked when the connection is restored.",
       "removing": "Removing pack from device...",
       "removed": "Pack removed from device.",
       "removingFailed": "Failed to remove pack from device.",
