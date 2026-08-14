@@ -43,59 +43,90 @@ public class FsStoryTellerAsyncDriver {
     private static final String NODE_INDEX_FILENAME = "ni";
     private static final String NIGHT_MODE_FILENAME = "nm";
 
-    private static final long FS_MOUNTPOINT_POLL_DELAY = 1000L;
-    private static final long FS_MOUNTPOINT_RETRY = 10;
-
-
-    private Device device = null;
-    private String partitionMountPoint = null;
+    // Volatile: written by the libusb detection thread (hotplug callback or active polling), read by
+    // the Vert.x threads serving HTTP requests.
+    private volatile Device device = null;
+    private volatile String partitionMountPoint = null;
+    /**
+     * The device whose partition is currently being waited for. Set before the search starts and
+     * cleared on unplug, which is what lets an unplug cancel a search already in flight.
+     */
+    private volatile Device awaitingPartitionFor = null;
     private List<DeviceHotplugEventListener> listeners = new ArrayList<>();
+
+    private final DevicePartitionLocator partitionLocator;
 
 
     public FsStoryTellerAsyncDriver() {
+        this(DevicePartitionLocator.forDeviceMetadataFile(DEVICE_METADATA_FILENAME));
+    }
+
+    FsStoryTellerAsyncDriver(DevicePartitionLocator partitionLocator) {
+        this.partitionLocator = partitionLocator;
         // Initialize libusb, handle and propagate hotplug events
         LOGGER.fine("Registering hotplug listener");
         LibUsbDetectionHelper.initializeLibUsb(DeviceVersion.DEVICE_VERSION_2, new DeviceHotplugEventListener() {
                     @Override
                     public void onDevicePlugged(Device device) {
-                        // Wait for a partition to be mounted which contains the .md file
-                        LOGGER.fine("Waiting for device partition...");
-                        for (int i = 0; i < FS_MOUNTPOINT_RETRY && partitionMountPoint==null; i++) {
-                            try {
-                                Thread.sleep(FS_MOUNTPOINT_POLL_DELAY);
-                                DeviceUtils.listMountPoints().forEach(path -> {
-                                    LOGGER.finest("Looking for .md file on mount point / drive: " + path);
-                                    File mdFile = new File(path, DEVICE_METADATA_FILENAME);
-                                    if (mdFile.exists()) {
-                                        partitionMountPoint = path;
-                                        LOGGER.info("FS device partition located: " + partitionMountPoint);
-                                    }
-                                });
-                            } catch (InterruptedException e) {
-                                LOGGER.log(Level.SEVERE, "Failed to locate device partition", e);
-                            }
-                        }
-
-                        if (partitionMountPoint == null) {
-                            throw new StoryTellerException("Could not locate device partition");
-                        }
-
-                        // Update device reference
-                        FsStoryTellerAsyncDriver.this.device = device;
-                        // Notify listeners
-                        FsStoryTellerAsyncDriver.this.listeners.forEach(listener -> listener.onDevicePlugged(device));
+                        FsStoryTellerAsyncDriver.this.handleDevicePlugged(device);
                     }
 
                     @Override
                     public void onDeviceUnplugged(Device device) {
-                        // Update device reference
-                        FsStoryTellerAsyncDriver.this.device = null;
-                        FsStoryTellerAsyncDriver.this.partitionMountPoint = null;
-                        // Notify listeners
-                        FsStoryTellerAsyncDriver.this.listeners.forEach(listener -> listener.onDeviceUnplugged(device));
+                        FsStoryTellerAsyncDriver.this.handleDeviceUnplugged(device);
                     }
                 }
         );
+    }
+
+    /**
+     * Resolves the mounted partition, then publishes the device.
+     *
+     * <p>Nothing is allowed to escape: this runs inside a {@code CompletableFuture} whose exceptions
+     * are only logged, so throwing here used to mean "no device, no message, and no retry until the
+     * next plug event" — the device stayed invisible to STUdio even though the OS had mounted it.
+     */
+    void handleDevicePlugged(Device device) {
+        LOGGER.info("Device plugged; waiting for its partition to be mounted");
+        this.awaitingPartitionFor = device;
+        try {
+            Optional<String> mountPoint =
+                    partitionLocator.awaitPartition(() -> this.awaitingPartitionFor == device);
+
+            if (this.awaitingPartitionFor != device) {
+                // Unplugged while we were waiting. handleDeviceUnplugged already cleared the state.
+                LOGGER.info("Device was unplugged before its partition became available");
+                return;
+            }
+            if (!mountPoint.isPresent()) {
+                // Already logged by the locator. Deliberately not thrown: the caller only logs.
+                this.awaitingPartitionFor = null;
+                return;
+            }
+
+            this.partitionMountPoint = mountPoint.get();
+            this.device = device;
+            this.awaitingPartitionFor = null;
+            LOGGER.info("Device ready on " + this.partitionMountPoint);
+            this.listeners.forEach(listener -> listener.onDevicePlugged(device));
+        } catch (Exception e) {
+            this.awaitingPartitionFor = null;
+            LOGGER.log(Level.SEVERE, "Failed to handle device plug event", e);
+        }
+    }
+
+    void handleDeviceUnplugged(Device device) {
+        LOGGER.info("Device unplugged");
+        // Cancels any partition search in flight and prevents a stale mount point from surviving.
+        this.awaitingPartitionFor = null;
+        this.device = null;
+        this.partitionMountPoint = null;
+        this.listeners.forEach(listener -> listener.onDeviceUnplugged(device));
+    }
+
+    /** Visible for tests: the mount point currently considered valid, if any. */
+    String getPartitionMountPoint() {
+        return partitionMountPoint;
     }
 
 

@@ -10,16 +10,21 @@ import org.usb4java.*;
 import studio.driver.event.DeviceHotplugEventListener;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class LibUsbActivePollingWorker implements Runnable {
 
     private static final Logger LOGGER = Logger.getLogger(LibUsbActivePollingWorker.class.getName());
 
+    /** Only log every Nth consecutive failure past the first. */
+    static final int FAILURE_LOG_INTERVAL = 12;
+
     private final Context context;
     private final DeviceVersion deviceVersion;
     private final DeviceHotplugEventListener listener;
     private Device device = null;
+    private int consecutiveFailures = 0;
 
     public LibUsbActivePollingWorker(Context context, DeviceVersion deviceVersion, DeviceHotplugEventListener listener) {
         this.context = context;
@@ -27,8 +32,46 @@ public class LibUsbActivePollingWorker implements Runnable {
         this.listener = listener;
     }
 
+    /**
+     * Runs one scan.
+     *
+     * <p>This is scheduled with {@code ScheduledExecutorService.scheduleAtFixedRate}, whose contract
+     * is unforgiving: <em>if any execution of the task encounters an exception, subsequent executions
+     * are suppressed</em>. The scan below reads a descriptor for every USB device on the machine, and
+     * {@code getDeviceDescriptor} legitimately fails with a transient error when a device disappears
+     * between the list snapshot and the read — which is exactly what happens while devices are being
+     * plugged and unplugged. Letting that propagate cancelled the polling task permanently: the
+     * backend stayed up and served HTTP, but no device was ever detected again until STUdio was
+     * restarted, with nothing in the UI to explain it.
+     *
+     * <p>On Windows libusb reports no hotplug capability, so this poller — not the hotplug callback —
+     * is the whole of device detection. Nothing may escape this method.
+     */
     @Override
     public void run() {
+        try {
+            scanOnce();
+            if (consecutiveFailures > 0) {
+                LOGGER.info("Active polling recovered after " + consecutiveFailures + " consecutive failure(s)");
+                consecutiveFailures = 0;
+            }
+        } catch (Exception e) {
+            int failures = ++consecutiveFailures;
+            // Throttled: a permanently failing scan must not fill the log file every POLL_DELAY.
+            if (failures == 1 || failures % FAILURE_LOG_INTERVAL == 0) {
+                LOGGER.log(Level.WARNING, "Active polling scan failed (consecutive failures: " + failures
+                        + "); detection continues on the next scan", e);
+            }
+        }
+    }
+
+    /** Observable so a degraded poller can be diagnosed without reading the logs. */
+    public int getConsecutiveFailures() {
+        return consecutiveFailures;
+    }
+
+    /** Seam: the actual scan, overridden in tests to inject failures without native libusb. */
+    protected void scanOnce() {
         // List available devices
         DeviceList devices = new DeviceList();
         int result = LibUsb.getDeviceList(this.context, devices);

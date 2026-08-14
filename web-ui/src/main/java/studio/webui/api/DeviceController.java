@@ -26,8 +26,13 @@ public class DeviceController {
     public static Router apiRouter(Vertx vertx, IStoryTellerService storyTellerService, LibraryService libraryService) {
         Router router = Router.router(vertx);
 
-        // Plugged device metadata
-        router.get("/infos").handler(ctx -> {
+        // Plugged device metadata.
+        // blockingHandler, not handler: reading device infos opens and reads `.md` straight off the
+        // SD card (and, for a 1.x device, issues libusb transfers). Running that on the event loop
+        // meant a slow or stalled volume froze every HTTP request the application served — the UI
+        // sat on "Vérification de l'appareil..." with no error and no timeout, and only restarting
+        // STUdio cleared it. The same reasoning applies to the three routes below.
+        router.get("/infos").blockingHandler(ctx -> {
             storyTellerService.deviceInfos()
                     .whenComplete((maybeDeviceInfos, e) -> {
                         if (e != null) {
@@ -47,7 +52,7 @@ public class DeviceController {
         });
 
         // Plugged device packs list
-        router.get("/packs").handler(ctx -> {
+        router.get("/packs").blockingHandler(ctx -> {
             storyTellerService.packs()
                     .whenComplete((devicePacks, e) -> {
                         if (e != null) {
@@ -90,7 +95,7 @@ public class DeviceController {
         });
 
         // Remove pack from device
-        router.post("/removeFromDevice").handler(ctx -> {
+        router.post("/removeFromDevice").blockingHandler(ctx -> {
             String uuid = ctx.getBodyAsJson().getString("uuid");
             storyTellerService.deletePack(uuid)
                     .whenComplete((removed, e) -> {
@@ -111,7 +116,7 @@ public class DeviceController {
         });
 
         // Reorder packs on device
-        router.post("/reorder").handler(ctx -> {
+        router.post("/reorder").blockingHandler(ctx -> {
             List<String> uuids = ctx.getBodyAsJson().getJsonArray("uuids").getList();
             storyTellerService.reorderPacks(uuids)
                     .whenComplete((reordered, e) -> {
