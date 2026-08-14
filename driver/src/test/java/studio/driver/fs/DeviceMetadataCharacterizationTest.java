@@ -6,9 +6,8 @@
 
 package studio.driver.fs;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -20,10 +19,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -42,34 +39,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DeviceMetadataCharacterizationTest {
 
     /**
-     * Managed by hand rather than with {@code @TempDir}: the code under test leaks the {@code .md}
-     * file handle on its failure paths (see {@link #leaksTheMetadataHandleOnFailurePaths()}), and on
-     * Windows an open handle makes the file undeletable. {@code @TempDir} turns that into a spurious
-     * test error at cleanup time; best-effort cleanup keeps the leak visible where it belongs — in a
-     * test that asserts it — instead of as noise on unrelated cases.
+     * Back to {@code @TempDir} now that {@code getDeviceInfos} closes the metadata stream on every
+     * path. This is not cosmetic: on Windows a retained handle makes the file undeletable, so
+     * {@code @TempDir}'s cleanup fails loudly if the leak ever returns — every test in this class
+     * that reaches a failure path is therefore also a regression detector for it. The class used to
+     * carry a hand-rolled best-effort cleanup precisely to tolerate the leak.
      */
-    private Path partition;
-
-    @BeforeEach
-    void createPartitionDirectory() throws IOException {
-        partition = Files.createTempDirectory("studio-md-");
-    }
-
-    @AfterEach
-    void removePartitionDirectory() {
-        try (Stream<Path> paths = Files.walk(partition)) {
-            paths.sorted(Comparator.reverseOrder()).forEach(path -> {
-                try {
-                    Files.deleteIfExists(path);
-                } catch (IOException ignored) {
-                    // Expected on Windows whenever the test exercised a failure path: the driver
-                    // still holds the handle. Leaving the file behind is preferable to failing.
-                }
-            });
-        } catch (IOException ignored) {
-            // Nothing useful to do; the OS temp directory is disposable.
-        }
-    }
+    @TempDir
+    Path partition;
 
     // ---------------------------------------------------------------- fixtures
 
@@ -238,36 +215,18 @@ class DeviceMetadataCharacterizationTest {
 
     // ---------------------------------------------------------------- resource handling
 
-    @Test
-    @EnabledOnOs(OS.WINDOWS)
-    @DisplayName("KNOWN GAP: the .md handle is leaked whenever parsing fails")
-    void leaksTheMetadataHandleOnFailurePaths() throws IOException {
-        // getDeviceInfos opens a FileInputStream and closes it only on the nominal path: the
-        // `return failedFuture(...)` for an unsupported version, and every exception caught by the
-        // surrounding try/catch, both skip the close(). The stream is only released whenever the GC
-        // gets around to it.
-        //
-        // Windows makes the leak observable: an open handle blocks deletion. Linux would not
-        // complain, which is precisely why this is pinned on Windows.
-        //
-        // getDeviceInfos runs on every /infos request and at the start of every upload and download,
-        // so a device stuck on an unreadable .md leaks one handle per attempt.
-        Path metadata = partition.resolve(".md");
-        Files.write(metadata, new byte[]{0x63, 0x00});   // version 99: unsupported
-
-        CompletableFuture<FsDeviceInfos> future =
-                DriverTestSupport.pluggedDriverMountedOn(partition).getDeviceInfos();
-        assertTrue(future.isCompletedExceptionally(), "precondition: parsing must have failed");
-
-        assertThrows(IOException.class, () -> Files.delete(metadata),
-                "the file should still be locked by the leaked stream");
-    }
+    /*
+     * These were characterization tests: until C4 the stream was closed only on the nominal path, so
+     * the failure-path test asserted that `.md` stayed locked. They are now specification tests —
+     * the stream must be released whatever happens. Deleting the file is the proof: on Windows an
+     * open handle makes that impossible, which is why they are pinned to Windows. On Linux the same
+     * leak would exist and go unnoticed, so these tests are the only guard against it coming back.
+     */
 
     @Test
     @EnabledOnOs(OS.WINDOWS)
-    @DisplayName("the handle IS released on the nominal path, confirming the leak is failure-specific")
+    @DisplayName("M1: the handle is released on the nominal path")
     void releasesTheMetadataHandleOnTheNominalPath() throws Exception {
-        // Control case for the test above: on success, close() is reached and the file is deletable.
         Path metadata = partition.resolve(".md");
         Files.write(metadata, metadataV6to7(7, '3', '3', "SN0123456789ABCDEF012345"));
 
@@ -275,6 +234,75 @@ class DeviceMetadataCharacterizationTest {
 
         Files.delete(metadata);
         assertTrue(Files.notExists(metadata));
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    @DisplayName("M2: the handle is released when the metadata version is unsupported")
+    void releasesTheMetadataHandleOnTheUnsupportedVersionPath() throws IOException {
+        // The early `return failedFuture(...)` for an unsupported version used to bypass close().
+        Path metadata = partition.resolve(".md");
+        Files.write(metadata, new byte[]{0x63, 0x00});   // version 99: unsupported
+
+        CompletableFuture<FsDeviceInfos> future =
+                DriverTestSupport.pluggedDriverMountedOn(partition).getDeviceInfos();
+        assertTrue(future.isCompletedExceptionally(), "precondition: parsing must have failed");
+
+        Files.delete(metadata);
+        assertTrue(Files.notExists(metadata), "the stream must not still be holding the file");
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    @DisplayName("M3/M4: the handle is released when parsing throws")
+    void releasesTheMetadataHandleWhenParsingThrows() throws IOException {
+        // A truncated V3 header makes Short.parseShort throw inside the parser, which lands in the
+        // surrounding catch — the other path that used to bypass close().
+        Path metadata = partition.resolve(".md");
+        Files.write(metadata, new byte[]{0x07, 0x00});
+
+        CompletableFuture<FsDeviceInfos> future =
+                DriverTestSupport.pluggedDriverMountedOn(partition).getDeviceInfos();
+        assertTrue(future.isCompletedExceptionally(), "precondition: parsing must have thrown");
+
+        Files.delete(metadata);
+        assertTrue(Files.notExists(metadata), "the stream must not still be holding the file");
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    @DisplayName("M5: repeated failing calls do not accumulate handles")
+    void repeatedFailingCallsDoNotAccumulateHandles() throws IOException {
+        // getDeviceInfos runs on every /infos request and at the start of every transfer, so a device
+        // stuck on an unreadable `.md` used to leak one handle per attempt for as long as the UI kept
+        // polling. Deleting the file at the end proves none of them is still open.
+        Path metadata = partition.resolve(".md");
+        Files.write(metadata, new byte[]{0x63, 0x00});   // version 99: unsupported
+        FsStoryTellerAsyncDriver driver = DriverTestSupport.pluggedDriverMountedOn(partition);
+
+        for (int i = 0; i < 200; i++) {
+            assertTrue(driver.getDeviceInfos().isCompletedExceptionally(), "call " + i + " should fail");
+        }
+
+        Files.delete(metadata);
+        assertTrue(Files.notExists(metadata), "200 failed calls must leave no open handle");
+    }
+
+    @Test
+    @DisplayName("the failure reported for an unsupported version is unchanged by the fix")
+    void unsupportedVersionStillReportsTheSameError() throws IOException {
+        // Guards the one thing the fix could plausibly have altered: which exception comes out of the
+        // early-return path once the close happens on the way out.
+        Path metadata = partition.resolve(".md");
+        Files.write(metadata, new byte[]{0x63, 0x00});
+
+        CompletableFuture<FsDeviceInfos> future =
+                DriverTestSupport.pluggedDriverMountedOn(partition).getDeviceInfos();
+
+        Throwable cause = assertThrows(ExecutionException.class, future::get).getCause();
+        assertInstanceOf(StoryTellerException.class, cause);
+        assertTrue(cause.getMessage().contains("Unsupported device metadata format version: 99"),
+                "unexpected message: " + cause.getMessage());
     }
 
     @Test
@@ -289,3 +317,4 @@ class DeviceMetadataCharacterizationTest {
         assertEquals(9, infos.getFirmwareMinor());
     }
 }
+
