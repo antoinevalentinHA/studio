@@ -24,6 +24,16 @@
         <module>web-ui</module>
     </modules>
 
+    <properties>
+        <!-- Test-only tooling. Pinned so that a build is reproducible whatever Maven version
+             the developer or the CI runner happens to use (the default Surefire bound by the
+             Maven super-POM varies across Maven releases, and versions below 2.22 cannot run
+             JUnit 5 at all). -->
+        <junit.version>5.10.2</junit.version>
+        <objenesis.version>3.3</objenesis.version>
+        <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
+    </properties>
+
     <build>
         <pluginManagement>
             <plugins>
@@ -35,12 +45,28 @@
                     </configuration>
                     <version>3.1</version>
                 </plugin>
+                <plugin>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven-surefire-plugin.version}</version>
+                </plugin>
             </plugins>
         </pluginManagement>
     </build>
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.junit</groupId>
+                <artifactId>junit-bom</artifactId>
+                <version>${junit.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.objenesis</groupId>
+                <artifactId>objenesis</artifactId>
+                <version>${objenesis.version}</version>
+            </dependency>
             <dependency>
                 <groupId>com.google.code.gson</groupId>
                 <artifactId>gson</artifactId>
