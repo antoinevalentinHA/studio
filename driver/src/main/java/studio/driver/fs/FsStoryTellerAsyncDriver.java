@@ -503,12 +503,21 @@ public class FsStoryTellerAsyncDriver {
         }
 
         try {
-            // Check free space
-            int folderSize = (int) FileUtils.getFolderSize(inputPath);
-            LOGGER.finest("Pack folder size: " + folderSize);
+            // Check free space. The estimate is in bytes the transfer is known to add: the source
+            // sizes it used to sum are neither what lands on the device nor all of it.
+            long currentIndexBytes = new File(this.partitionMountPoint + File.separator + PACK_INDEX_FILENAME).length();
+            long requiredBytes;
+            try {
+                requiredBytes = PackTransferSizeEstimator.additionalBytesForUpload(Paths.get(inputPath), currentIndexBytes);
+            } catch (ArithmeticException overflow) {
+                // An estimate too large to represent is refused rather than wrapped into a small
+                // number that would read as "plenty of room".
+                throw new StoryTellerException("Not enough free space on the device", overflow);
+            }
+            LOGGER.finest("Pack transfer needs at least " + requiredBytes + " additional bytes");
             String mdFile = this.partitionMountPoint + File.separator + DEVICE_METADATA_FILENAME;
             File mdFd = new File(mdFile);
-            if (mdFd.getFreeSpace() < folderSize) {
+            if (!hasEnoughFreeSpace(mdFd.getFreeSpace(), requiredBytes)) {
                 throw new StoryTellerException("Not enough free space on the device");
             }
 
@@ -672,6 +681,17 @@ public class FsStoryTellerAsyncDriver {
             throw new StoryTellerException("Failed to generate device-specific boot file", e);
         }
         return new TransferStatus(transferred.get() == folderSize, transferred.get(), folderSize, 0.0);
+    }
+
+    /**
+     * The preflight decision, kept apart from the filesystem so it can be exercised directly.
+     *
+     * <p>Both operands are {@code long} and are compared rather than subtracted: a difference beyond
+     * the int range — or beyond the long range — is exactly the case the old {@code int} estimate got
+     * wrong, by wrapping negative and passing the check unconditionally.
+     */
+    static boolean hasEnoughFreeSpace(long freeSpace, long requiredBytes) {
+        return freeSpace >= requiredBytes;
     }
 
     public String computePackFolderName(String uuid) {
