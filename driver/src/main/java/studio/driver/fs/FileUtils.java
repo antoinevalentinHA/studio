@@ -8,15 +8,22 @@ package studio.driver.fs;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.stream.Stream;
 
 public class FileUtils {
 
     public static long getFolderSize(String path) throws IOException {
-        return Files.walk(Paths.get(path))
-                .filter(p -> p.toFile().isFile())
-                .mapToLong(p -> p.toFile().length())
-                .sum();
+        // sum() consumes the whole traversal, so the handles are released on the nominal path; the
+        // try-with-resources is what releases them when the walk itself fails part-way, for instance
+        // on a directory that cannot be read.
+        try (Stream<Path> paths = Files.walk(Paths.get(path))) {
+            return paths
+                    .filter(p -> p.toFile().isFile())
+                    .mapToLong(p -> p.toFile().length())
+                    .sum();
+        }
     }
 
     public static long getFileSize(String path) throws IOException {
