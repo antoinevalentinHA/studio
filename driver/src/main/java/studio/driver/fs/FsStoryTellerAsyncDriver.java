@@ -26,7 +26,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -58,6 +57,7 @@ public class FsStoryTellerAsyncDriver {
     private List<DeviceHotplugEventListener> listeners = new ArrayList<>();
 
     private final DevicePartitionLocator partitionLocator;
+    private final PackIndexWriter packIndexWriter;
 
 
     public FsStoryTellerAsyncDriver() {
@@ -65,7 +65,12 @@ public class FsStoryTellerAsyncDriver {
     }
 
     FsStoryTellerAsyncDriver(DevicePartitionLocator partitionLocator) {
+        this(partitionLocator, new TemporaryFilePackIndexWriter());
+    }
+
+    FsStoryTellerAsyncDriver(DevicePartitionLocator partitionLocator, PackIndexWriter packIndexWriter) {
         this.partitionLocator = partitionLocator;
+        this.packIndexWriter = packIndexWriter;
         // Initialize libusb, handle and propagate hotplug events
         LOGGER.fine("Registering hotplug listener");
         LibUsbDetectionHelper.initializeLibUsb(DeviceVersion.DEVICE_VERSION_2, new DeviceHotplugEventListener() {
@@ -440,29 +445,15 @@ public class FsStoryTellerAsyncDriver {
                 });
     }
 
+    /**
+     * Hands the index off to the {@link PackIndexWriter}, and keeps the async and error contract the
+     * callers already rely on: a completed future carrying {@code true}, or a failed one carrying a
+     * {@link StoryTellerException} wrapping the original cause. How the file is actually replaced is
+     * no longer this class's business.
+     */
     private CompletableFuture<Boolean> writePackIndex(List<UUID> packUUIDs) {
-        // Because the hidden file cannot be modified on windows, we need to write to a temporary file
         try {
-            String piFile = this.partitionMountPoint + File.separator + PACK_INDEX_FILENAME;
-            String newPiFile = piFile + ".new";
-            LOGGER.finest("Writing pack index to temporary file: " + newPiFile);
-
-            try(
-                    FileOutputStream packIndexFos = new FileOutputStream(newPiFile);
-                    DataOutputStream packIndexDos = new DataOutputStream(packIndexFos);
-            ) {
-                for (UUID packUUID : packUUIDs) {
-                    packIndexDos.writeLong(packUUID.getMostSignificantBits());
-                    packIndexDos.writeLong(packUUID.getLeastSignificantBits());
-                }
-            }
-
-            // Then replace file
-            LOGGER.finest("Replacing pack index file");
-            Files.copy(Paths.get(newPiFile), Paths.get(this.partitionMountPoint + File.separator + PACK_INDEX_FILENAME), StandardCopyOption.REPLACE_EXISTING);
-            LOGGER.finest("Deleting temporary pack index file");
-            Files.delete(Paths.get(newPiFile));
-
+            packIndexWriter.write(this.partitionMountPoint + File.separator + PACK_INDEX_FILENAME, packUUIDs);
             return CompletableFuture.completedFuture(true);
         } catch (Exception e) {
             return CompletableFuture.failedFuture(new StoryTellerException("Failed to write pack index on device partition", e));

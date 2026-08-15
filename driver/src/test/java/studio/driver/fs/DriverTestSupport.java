@@ -40,8 +40,20 @@ final class DriverTestSupport {
 
     /** A driver instance whose {@code partitionMountPoint} points at {@code partitionRoot}. */
     static FsStoryTellerAsyncDriver driverMountedOn(Path partitionRoot) {
+        return driverMountedOn(partitionRoot, new TemporaryFilePackIndexWriter());
+    }
+
+    /**
+     * Same, with a chosen {@link PackIndexWriter}.
+     *
+     * <p>Objenesis skips the constructors, so collaborators the driver would normally receive there
+     * have to be set by hand. The default is the real writer, which is what keeps every test written
+     * before the seam existed observing the same filesystem behaviour it always did.
+     */
+    static FsStoryTellerAsyncDriver driverMountedOn(Path partitionRoot, PackIndexWriter packIndexWriter) {
         FsStoryTellerAsyncDriver driver = OBJENESIS.newInstance(FsStoryTellerAsyncDriver.class);
         setField(driver, "partitionMountPoint", partitionRoot.toString());
+        setField(driver, "packIndexWriter", packIndexWriter);
         return driver;
     }
 
@@ -52,7 +64,12 @@ final class DriverTestSupport {
      * by the code under test.
      */
     static FsStoryTellerAsyncDriver pluggedDriverMountedOn(Path partitionRoot) {
-        FsStoryTellerAsyncDriver driver = driverMountedOn(partitionRoot);
+        return pluggedDriverMountedOn(partitionRoot, new TemporaryFilePackIndexWriter());
+    }
+
+    /** Same, with a chosen {@link PackIndexWriter}. */
+    static FsStoryTellerAsyncDriver pluggedDriverMountedOn(Path partitionRoot, PackIndexWriter packIndexWriter) {
+        FsStoryTellerAsyncDriver driver = driverMountedOn(partitionRoot, packIndexWriter);
         setField(driver, "device", newInertDevice());
         return driver;
     }
