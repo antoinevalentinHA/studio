@@ -574,58 +574,74 @@ class WritePathCharacterizationTest {
     class W7FreeSpaceEstimate {
 
         @Test
-        @DisplayName("MORE bytes are written to the device than the precheck measured on the source")
-        void moreBytesAreWrittenThanThePrecheckEstimated() throws Exception {
-            // uploadPack compares getFreeSpace() against FileUtils.getFolderSize(inputPath), i.e. the
-            // sum of the SOURCE file sizes. Two things make the amount actually written larger: the
-            // V3 cipher pads each asset up to the AES block size, and `bt` is generated on the device
-            // afterwards and is in no estimate at all. The precheck can therefore accept an upload
-            // whose real footprint exceeds what it measured.
+        @DisplayName("the source bytes can be fewer than the logical bytes actually written")
+        void sourceBytesCanBeLessThanLogicalBytesWritten() throws Exception {
+            // A property of the cipher and the transfer, not of any estimate: the V3 cipher pads each
+            // asset up to the AES block size, and `bt` is generated on the device from device
+            // material, so it is in no source tree at all. Summing the source therefore measures less
+            // than what lands on the card. This is the measurement a free-space preflight has to
+            // account for; what the current one does with it is specified in
+            // PackTransferSizeEstimatorTest, not here.
             writeIndexFile();
             Path source = sourcePack();
             FsStoryTellerAsyncDriver driver = driver();
 
-            long estimatedBySourceSize = totalFileBytes(source);
+            long sourceBytes = totalFileBytes(source);
             driver.uploadPack(PACK_B.toString(), source.toString(), null).join();
             Path contentFolder = partition.resolve(".content").resolve(driver.computePackFolderName(PACK_B.toString()));
             long actuallyWritten = totalFileBytes(contentFolder);
 
-            assertEquals(380, estimatedBySourceSize, "200 + 100 + 50 + 30, plus a zero-byte .cleartext");
-            assertTrue(actuallyWritten > estimatedBySourceSize,
-                    "written " + actuallyWritten + " bytes for an estimate of " + estimatedBySourceSize);
+            assertEquals(380, sourceBytes, "200 + 100 + 50 + 30, plus a zero-byte .cleartext");
+            assertTrue(actuallyWritten > sourceBytes,
+                    "written " + actuallyWritten + " bytes for " + sourceBytes + " bytes of source");
             assertEquals(440, actuallyWritten,
                     "ni 200 verbatim, ri 100->112, si 50->64, li 30->32, plus a 32-byte bt");
         }
 
         @Test
-        @DisplayName("the .cleartext marker is counted by the estimate but never written to the device")
-        void theEstimateCountsAFileThatIsNeverCopied() throws Exception {
-            // Harmless as it stands, because the marker is empty — but it shows the estimate is a sum
-            // over the source tree rather than a model of what the transfer will produce.
+        @DisplayName("the estimate ignores the files the transfer does not copy")
+        void theEstimateIgnoresFilesTheTransferDoesNotCopy() throws Exception {
+            // The `.cleartext` marker is a library-side flag that the transfer drops. The old estimate
+            // summed the source tree blindly and counted it; the current one asks CipherUtils the same
+            // question the copy asks, so the marker's size cannot move it. Observed here against a
+            // real upload, which is what keeps the rule anchored to what the transfer does rather than
+            // to a restatement of itself.
             Path source = sourcePack();
-            Files.write(source.resolve(".cleartext"), filler(11, 'c'));
             writeIndexFile();
             FsStoryTellerAsyncDriver driver = driver();
+
+            long withEmptyMarker = PackTransferSizeEstimator.additionalBytesForUpload(source, 0L);
+            Files.write(source.resolve(".cleartext"), filler(11, 'c'));
+            long withElevenByteMarker = PackTransferSizeEstimator.additionalBytesForUpload(source, 0L);
+
+            assertEquals(withEmptyMarker, withElevenByteMarker,
+                    "the marker's size must not move the estimate");
 
             driver.uploadPack(PACK_B.toString(), source.toString(), null).join();
 
             Path contentFolder = partition.resolve(".content").resolve(driver.computePackFolderName(PACK_B.toString()));
-            assertFalse(Files.exists(contentFolder.resolve(".cleartext")));
-            assertTrue(totalFileBytes(source) > 380, "the marker inflates the estimate");
+            assertFalse(Files.exists(contentFolder.resolve(".cleartext")),
+                    "the transfer drops the marker, which is why the estimate may ignore it");
         }
 
         @Test
-        @DisplayName("the estimate is truncated to an int before being compared")
-        void theEstimateIsTruncatedToAnInt() {
-            // uploadPack does `int folderSize = (int) FileUtils.getFolderSize(inputPath)`. Beyond
-            // 2 GiB that wraps, and a negative estimate passes `getFreeSpace() < folderSize`
-            // unconditionally. Recorded here as arithmetic rather than exercised with a real
-            // multi-gigabyte fixture; a pack that large is not otherwise realistic.
-            long threeGigabytes = 3L * 1024 * 1024 * 1024;
+        @DisplayName("the precheck keeps its arithmetic in long, past the int range")
+        void thePrecheckKeepsItsArithmeticInLong() throws Exception {
+            // The precheck used to do `int folderSize = (int) FileUtils.getFolderSize(inputPath)`.
+            // Beyond 2 GiB that wrapped negative and `getFreeSpace() < folderSize` passed
+            // unconditionally: the check silently stopped checking. Both halves are now long — the
+            // requirement itself, and the comparison against free space.
+            long fourGigabytes = 4L * 1024 * 1024 * 1024;
+            Path source = sourcePack();
 
-            int truncated = (int) threeGigabytes;
+            long requirement = PackTransferSizeEstimator.additionalBytesForUpload(source, fourGigabytes);
 
-            assertTrue(truncated < 0, "a >2 GiB source wraps to a negative estimate, saw " + truncated);
+            assertTrue(requirement > Integer.MAX_VALUE, "the requirement wrapped, saw " + requirement);
+            assertFalse(FsStoryTellerAsyncDriver.hasEnoughFreeSpace(requirement - 1, requirement),
+                    "one byte short must refuse, whatever the magnitude");
+            assertTrue(FsStoryTellerAsyncDriver.hasEnoughFreeSpace(requirement, requirement));
+            assertFalse(FsStoryTellerAsyncDriver.hasEnoughFreeSpace(0L, requirement),
+                    "an empty device must not accept a multi-gigabyte transfer");
         }
     }
 
