@@ -40,6 +40,8 @@ public class FsStoryTellerAsyncDriver {
 
     private static final String DEVICE_METADATA_FILENAME = ".md";
     private static final String PACK_INDEX_FILENAME = ".pi";
+    /** {@code .pi} is a bare concatenation of big-endian UUIDs; a valid one is a multiple of this. */
+    private static final int PACK_INDEX_RECORD_SIZE = 16;
     private static final String CONTENT_FOLDER = ".content";
     private static final String NODE_INDEX_FILENAME = "ni";
     private static final String NIGHT_MODE_FILENAME = "nm";
@@ -304,14 +306,28 @@ public class FsStoryTellerAsyncDriver {
 
                             // Open 'ni' file
                             File packFolder = new File(packFolderPath);
-                            FileInputStream niFis = new FileInputStream(new File(packFolder, NODE_INDEX_FILENAME));
-                            DataInputStream niDis = new DataInputStream(niFis);
-                            ByteBuffer bb = ByteBuffer.wrap(niDis.readNBytes(512)).order(ByteOrder.LITTLE_ENDIAN);
-                            short version = bb.getShort(2);
+                            File nodeIndex = new File(packFolder, NODE_INDEX_FILENAME);
+                            if (!nodeIndex.exists()) {
+                                // An index entry with nothing behind it is a LOCAL inconsistency, not
+                                // a corrupt index: the other packs are intact and must stay listable.
+                                // Opening the missing file used to throw and fail the whole listing,
+                                // which made one stale entry enough to hide every pack on the device.
+                                // Nothing is repaired here — the entry stays in .pi, and whatever is
+                                // or is not on the card is left exactly as found.
+                                LOGGER.warning("Pack " + packUUID + " is listed in the index but has no readable"
+                                        + " content on the device; leaving it out of the list");
+                                continue;
+                            }
+                            // try-with-resources: the version read below throws on a truncated 'ni',
+                            // and the explicit closes this replaces were skipped when it did.
+                            short version;
+                            try (FileInputStream niFis = new FileInputStream(nodeIndex);
+                                 DataInputStream niDis = new DataInputStream(niFis)) {
+                                ByteBuffer bb = ByteBuffer.wrap(niDis.readNBytes(512)).order(ByteOrder.LITTLE_ENDIAN);
+                                version = bb.getShort(2);
+                            }
                             packInfos.setVersion(version);
                             LOGGER.fine("Pack version: " + version);
-                            niDis.close();
-                            niFis.close();
 
                             // Night mode is available if file 'nm' exists
                             packInfos.setNightModeAvailable(new File(packFolder, NIGHT_MODE_FILENAME).exists());
@@ -330,27 +346,37 @@ public class FsStoryTellerAsyncDriver {
 
     private CompletableFuture<List<UUID>> readPackIndex() {
         return CompletableFuture.supplyAsync(() -> {
-            List<UUID> packUUIDs = new ArrayList<>();
+            String piFile = this.partitionMountPoint + File.separator + PACK_INDEX_FILENAME;
+            LOGGER.finest("Reading packs index from file: " + piFile);
+
+            byte[] index;
             try {
-                String piFile = this.partitionMountPoint + File.separator + PACK_INDEX_FILENAME;
-
-                LOGGER.finest("Reading packs index from file: " + piFile);
-                FileInputStream packIndexFis = new FileInputStream(piFile);
-
-                byte[] packUuid = new byte[16];
-                while (packIndexFis.read(packUuid) > 0) {
-                    ByteBuffer bb = ByteBuffer.wrap(packUuid);
-                    long high = bb.getLong();
-                    long low = bb.getLong();
-                    packUUIDs.add(new UUID(high, low));
-                }
-
-                packIndexFis.close();
-
-                return packUUIDs;
+                // Read the index in one go. readAllBytes owns and closes its own channel on every
+                // path — the previous loop closed its stream only when the read completed normally —
+                // and having the whole file in hand is what makes the framing check below exact.
+                // The index is 16 bytes per pack, so this stays in the kilobytes.
+                index = Files.readAllBytes(Paths.get(piFile));
             } catch (Exception e) {
                 throw new StoryTellerException("Failed to read pack index on device partition", e);
             }
+
+            // The index is the only authority on what the device holds, and it cannot be rebuilt
+            // from the card. A file that is not a whole number of records is structurally invalid:
+            // the previous loop read a partial record into a reused buffer and turned the leftover
+            // bytes into a pack UUID that was never written. Report it; do not repair it.
+            if (index.length % PACK_INDEX_RECORD_SIZE != 0) {
+                throw new StoryTellerException("Invalid pack index on device partition: " + index.length
+                        + " bytes is not a whole number of " + PACK_INDEX_RECORD_SIZE + "-byte records");
+            }
+
+            List<UUID> packUUIDs = new ArrayList<>();
+            ByteBuffer bb = ByteBuffer.wrap(index);
+            while (bb.hasRemaining()) {
+                long high = bb.getLong();
+                long low = bb.getLong();
+                packUUIDs.add(new UUID(high, low));
+            }
+            return packUUIDs;
         });
     }
 

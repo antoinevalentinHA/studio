@@ -21,7 +21,6 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -32,9 +31,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * no checksum. It is the only record of what the device contains, and it cannot be rebuilt from the
  * card: a {@code .content} folder is named after the last 8 hex characters of its UUID only.
  *
- * <p>The tests below pin what the current reader does with a well-formed index, and — more usefully
- * — what it does with a malformed one. Nothing here asserts that the malformed cases are handled
- * correctly; they are not.
+ * <p>The tests below pin what the reader does with a well-formed index, and — more usefully — what
+ * it does with a malformed one. The malformed cases used to record that a partial record was
+ * silently turned into a pack; they now require it to be rejected, which is what the reader does
+ * since the read path was hardened.
  */
 class PackIndexCharacterizationTest {
 
@@ -111,54 +111,47 @@ class PackIndexCharacterizationTest {
     // ---------------------------------------------------------------- malformed
 
     @Test
-    @DisplayName("KNOWN GAP: a 15-byte index yields one fabricated UUID instead of an error")
-    void truncatedIndexFabricatesAPack() throws Throwable {
-        // The reader loops on `while (fis.read(buffer16) > 0)` and never checks how many bytes came
-        // back. A short final read leaves the tail of the reusable buffer untouched, so a truncated
-        // index is silently turned into a pack UUID that was never written.
+    @DisplayName("a 15-byte index is rejected rather than turned into a pack")
+    void rejectsATruncatedIndex() {
+        // The reader used to loop on `while (fis.read(buffer16) > 0)` without checking how many bytes
+        // came back. A short final read left the tail of the reusable buffer untouched, so a
+        // truncated index became a pack UUID that was never written — an entry pointing nowhere, in
+        // the one file that cannot be rebuilt from the card.
         byte[] fifteenBytes = Arrays.copyOf(encode(FIRST), 15);
 
-        List<UUID> packs = readIndex(fifteenBytes);
+        Throwable raised = assertThrows(Throwable.class, () -> readIndex(fifteenBytes));
 
-        assertEquals(1, packs.size(), "a truncated index should not produce a pack, but it does");
-        assertNotEquals(FIRST, packs.get(0), "and the pack it produces is not the one that was written");
-        // The 16th byte is whatever the freshly allocated buffer held, i.e. zero.
-        ByteBuffer expected = ByteBuffer.wrap(Arrays.copyOf(fifteenBytes, 16));
-        assertEquals(new UUID(expected.getLong(), expected.getLong()), packs.get(0));
+        assertTrue(hasCauseOfType(raised, StoryTellerException.class),
+                "a truncated index must be reported, got: " + raised);
     }
 
     @Test
-    @DisplayName("KNOWN GAP: a trailing partial entry is completed with stale bytes of the previous one")
-    void partialTrailingEntryReusesPreviousBytes() throws Throwable {
-        // Worse than the case above: the 16-byte buffer is reused across iterations, so a partial
-        // final read mixes fresh bytes with leftovers from the pack read just before.
+    @DisplayName("a trailing partial entry invalidates the whole index")
+    void rejectsAPartialTrailingEntry() {
+        // Worse than the case above: the 16-byte buffer was reused across iterations, so a partial
+        // final read mixed fresh bytes with leftovers from the pack read just before. The complete
+        // entry that precedes it does not redeem the file — the index is invalid as a whole.
         byte[] onePackPlusFourBytes = Arrays.copyOf(encode(FIRST, SECOND), 20);
 
-        List<UUID> packs = readIndex(onePackPlusFourBytes);
+        Throwable raised = assertThrows(Throwable.class, () -> readIndex(onePackPlusFourBytes));
 
-        assertEquals(2, packs.size());
-        assertEquals(FIRST, packs.get(0));
-
-        byte[] stale = encode(FIRST);
-        byte[] mixed = new byte[16];
-        System.arraycopy(onePackPlusFourBytes, 16, mixed, 0, 4);   // 4 fresh bytes
-        System.arraycopy(stale, 4, mixed, 4, 12);                  // 12 bytes left over from FIRST
-        ByteBuffer expected = ByteBuffer.wrap(mixed);
-        assertEquals(new UUID(expected.getLong(), expected.getLong()), packs.get(1));
+        assertTrue(hasCauseOfType(raised, StoryTellerException.class),
+                "a partial trailing entry must be reported, got: " + raised);
     }
 
     @Test
-    @DisplayName("KNOWN GAP: no size validation — a malformed index is never reported as such")
-    void sizeIsNeverValidated() throws Throwable {
-        // A valid .pi has a size that is a multiple of 16. Nothing checks it, at read or at write.
-        // This is the cheapest possible integrity signal and it is currently unused.
+    @DisplayName("every size that is not a multiple of 16 is rejected")
+    void rejectsEverySizeThatIsNotAMultipleOfSixteen() {
+        // A valid .pi has a size that is a multiple of 16. It is the cheapest integrity signal the
+        // format offers, and the only one: there is no header, no length and no checksum.
         for (int size : new int[]{1, 15, 17, 31, 33}) {
             byte[] content = Arrays.copyOf(encode(FIRST, SECOND, THIRD), size);
 
-            List<UUID> packs = readIndex(content);
+            Throwable raised = assertThrows(Throwable.class, () -> readIndex(content),
+                    "a " + size + "-byte index must not be accepted");
 
-            assertEquals((size + 15) / 16, packs.size(),
-                    "a " + size + "-byte index is accepted and rounded up to " + ((size + 15) / 16) + " packs");
+            assertTrue(hasCauseOfType(raised, StoryTellerException.class),
+                    "a " + size + "-byte index must be reported as invalid, got: " + raised);
         }
     }
 
