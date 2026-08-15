@@ -47,17 +47,19 @@ suite too.
 
 They are **characterization tests**. They pin what the code does today so that a later change is
 visible, and they were written before any behaviour was modified. Several of them assert things that
-are wrong — a truncated index producing a fabricated pack, a truncated `.md` reporting firmware
-`0.0`. Those are marked `KNOWN GAP` in their display name and explained in a comment.
+are wrong — a truncated `.md` reporting firmware `0.0`, for one. Those are marked `KNOWN GAP` in
+their display name and explained in a comment.
 
 A `KNOWN GAP` test passing does not mean the behaviour is acceptable. It means the behaviour is
 known, and that the day someone fixes it the test will fail and force a deliberate decision. When the
 integrity work starts, these are the tests to convert from "this is what happens" to "this is what
 must happen".
 
-That conversion has already happened once: the test that asserted the `.md` stream stayed open on
+That conversion has happened twice so far. The test that asserted the `.md` stream stayed open on
 failure paths now asserts the opposite, and the class it lives in went back to `@TempDir` so that its
-cleanup fails loudly if the leak ever returns. Later suites are specification tests from the start.
+cleanup fails loudly if the leak ever returns. The three that recorded a truncated `.pi` being turned
+into a fabricated pack now require it to be rejected instead. Later suites are specification tests
+from the start.
 
 Nothing here touches a device. Fixtures are synthesised in code; no device data is committed.
 
@@ -73,7 +75,11 @@ counts.
 | UUID → `.content` folder name | `PackFolderNamingCharacterizationTest` | includes the driver/core duplication cross-check |
 | V2 and V3 transfer ciphering, file selection | `CipherUtilsCharacterizationTest` | |
 | `.md` parsing, version dispatch, key derivation, stream lifecycle | `DeviceMetadataCharacterizationTest` | 4 handle-lifecycle cases are Windows-only |
-| `.pi` parsing | `PackIndexCharacterizationTest` | read path only — the write path is not covered |
+| `.pi` parsing | `PackIndexCharacterizationTest` | the malformed-index cases are specifications, not characterization |
+| `.pi` framing, orphan index entries, stream ownership on reads | `ReadPathHardeningTest` | **specifications**, not characterization: what the read path must guarantee |
+| Write path: `writePackIndex`, upload ordering, retry, delete ordering, free-space estimate | `WritePathCharacterizationTest` | characterization only; runs on the runner's temporary directory, NTFS on Windows; 5 cases Windows-only |
+| Same, on FAT32, plus what a pack costs in allocated space | `Fat32WritePathCharacterizationTest` | opt-in, see below |
+| Directory streams released when a pack copy is interrupted | `FilesWalkResourceLeakTest` | opt-in FAT32 — the leak exists everywhere but is only observable there |
 | Windows DOS attributes, `ATOMIC_MOVE` | `WindowsFileSemanticsCharacterizationTest` | Windows only, skipped elsewhere |
 | Same, on FAT32 | `Fat32AtomicMoveCharacterizationTest` | opt-in, see below |
 | Partition discovery: late mount, cancellation, retry | `DevicePartitionLocatorTest` | |
@@ -105,13 +111,16 @@ Measured on NTFS, which is what a CI runner's temporary directory uses:
 
 ## FAT32: not covered by CI
 
-A Lunii uses FAT32, and **none of the above has been verified on FAT32**. NTFS results do not
-transfer: FAT32 has no journal, and its rename semantics are its own.
+A Lunii uses FAT32, and NTFS results do not transfer to it: FAT32 has no journal, and its rename
+semantics are its own. Most of the findings above have since been replayed on one real FAT32 volume
+and held — the hidden attribute is lost there too, `ATOMIC_MOVE` worked, handle semantics matched —
+but that is one VHD, one Windows version, one cluster size, and no device.
 
-The test exists but is opt-in, because getting a FAT32 volume onto a GitHub-hosted runner means
-driving `diskpart` to create and attach a VHD — slow, elevation-dependent, and prone to failures
-unrelated to this project. Making every pull request depend on that was judged a worse trade than
-leaving the gap explicit.
+The FAT32 tests exist but are opt-in, because getting a FAT32 volume onto a GitHub-hosted runner
+means driving `diskpart` to create and attach a VHD — slow, elevation-dependent, and prone to
+failures unrelated to this project. Making every pull request depend on that was judged a worse trade
+than leaving the gap explicit. **CI therefore never exercises FAT32**, and the one regression that is
+only observable there — `FilesWalkResourceLeakTest` — is not guarded by it.
 
 To run it against a FAT32 volume:
 
@@ -126,21 +135,31 @@ it at a story teller regardless.
 
 ## Known limitations
 
-- **FAT32 is unverified**, as described above. **This remains the largest gap**, and it stays open
-  until the write path is characterised and exercised on a real FAT32 volume. Field operations
-  having gone well (see `FIELD-VALIDATION.md`) says nothing about it: the code that writes `.pi` has
-  not been changed.
+- **FAT32 is covered only by opt-in tests**, on a single volume, and never by CI. The write path has
+  been characterised there, which closes the measurement gap — it does not close the integrity one.
+  Field operations having gone well (see `FIELD-VALIDATION.md`) says nothing about it either: the
+  code that writes `.pi` has not been changed.
 - **Durability is not tested and cannot be.** No test can establish that `force()` reached the card,
   that the SD controller honoured it, or that a rename survives a power cut.
 - **Firmware behaviour is unknown.** Nothing here says how a device reacts to a visible `.pi`, a
   `.pi` whose size is not a multiple of 16, or a stray `.pi.new` at the root.
-- **The write path is still not covered.** `uploadPack`, `deletePack`, `reorderPacks` and
-  `writePackIndex` have no tests at all. The obstacle that used to be given for this — the driver's
-  constructor initialising libusb — has largely been removed since: `FsStoryTellerAsyncDriver` has a
-  package-private constructor taking a `DevicePartitionLocator`, `DriverTestSupport` can build an
-  instance without running the constructor and point it at a temporary directory, and
-  `LibUsbDetectionHelper` exposes a `LibUsbEnvironment` seam with `setEnvironmentForTest`. The
-  workers expose `handleEvents`, `pause` and `scanOnce` for the same reason. What remains missing is
-  the tests themselves, not the means to write them. Nothing above should be read as saying the USB
-  layer is trivially testable: everything native still goes through a substituted environment, and
-  the real filesystem behaviour of a device is out of reach.
+- **The write path is described, not hardened.** `writePackIndex`, `uploadPack`, `deletePack`,
+  `reorderPacks` and the free-space estimate are now covered — by `WritePathCharacterizationTest` on
+  the standard filesystem, and by `Fat32WritePathCharacterizationTest` on an opt-in FAT32 volume.
+  Those are **characterization** tests: they record what the code does, including the parts that are
+  plainly undesirable — `.pi` replaced by a non-atomic copy, `.pi.new` left behind by a failed
+  rewrite, an orphan `.content` folder left by a failed upload, an index rewritten before the content
+  it points at is removed, an estimate that does not upper-bound what gets allocated. **None of that
+  has been fixed.** A test passing here means the behaviour is known, not that it is safe, and
+  nothing in this repository establishes crash-safety or durability.
+- **There is no seam for the critical window.** `writePackIndex` builds its paths with
+  `Paths.get(String)`, so no instrumented filesystem can be substituted and there is no extension
+  point between writing `.pi.new` and the end of the copy. Proving directly that there is an instant
+  with no valid index on the device therefore remains out of reach.
+- **Testability is no longer the obstacle it was.** `FsStoryTellerAsyncDriver` has a package-private
+  constructor taking a `DevicePartitionLocator`, `DriverTestSupport` can build an instance without
+  running the constructor and point it at a temporary directory, and `LibUsbDetectionHelper` exposes
+  a `LibUsbEnvironment` seam with `setEnvironmentForTest`. The workers expose `handleEvents`, `pause`
+  and `scanOnce` for the same reason. Nothing here should be read as saying the USB layer is
+  trivially testable: everything native still goes through a substituted environment, and the real
+  filesystem behaviour of a device is out of reach.
