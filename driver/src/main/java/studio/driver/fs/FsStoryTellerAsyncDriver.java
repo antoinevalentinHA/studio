@@ -32,6 +32,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Stream;
 
 public class FsStoryTellerAsyncDriver {
 
@@ -568,75 +569,80 @@ public class FsStoryTellerAsyncDriver {
         }
 
         // Copy folders and files
-        Files.walk(Paths.get(sourceFolder))
-                .forEach(s -> {
-                    try {
-                        Path d = destFolder.toPath().resolve(Paths.get(sourceFolder).relativize(s));
-                        if (Files.isDirectory(s)) {
-                            if (!Files.exists(d)) {
-                                LOGGER.finer("Creating directory " + d.toString());
-                                Files.createDirectory(d);
+        // The stream owns an open directory handle per level; when the lambda below throws, the
+        // traversal is abandoned mid-way and only try-with-resources still closes them. Leaving them
+        // open makes the source pack undeletable on Windows, and on FAT32 its directory entry
+        // survives in the parent even after a successful delete.
+        try (Stream<Path> sourcePaths = Files.walk(Paths.get(sourceFolder))) {
+            sourcePaths.forEach(s -> {
+                try {
+                    Path d = destFolder.toPath().resolve(Paths.get(sourceFolder).relativize(s));
+                    if (Files.isDirectory(s)) {
+                        if (!Files.exists(d)) {
+                            LOGGER.finer("Creating directory " + d.toString());
+                            Files.createDirectory(d);
+                        }
+                    } else {
+                        // DO NOT COPY .cleartext file
+                        if (!CipherUtils.shouldBeCopied(s)) {
+                            LOGGER.finer("NOT copying file " + s.toString());
+                            return;
+                        }
+
+                        int fileSize = (int) FileUtils.getFileSize(s.toAbsolutePath().toString());
+                        LOGGER.finer("Copying file " + s.toString() + " to " + d.toString() + " (" + fileSize + " bytes)");
+
+                        if (CipherUtils.shouldBeCiphered(s)) {
+                            if (deviceInfos.getFirmwareMajor() == 2) {
+                                if (isUpload) {
+                                    if (isCleartext) {
+                                        byte[] ciphered = CipherUtils.cipherFirstBlockCommonKey(Files.readAllBytes(s));
+                                        Files.write(d, ciphered);
+                                    } else {
+                                        Files.copy(s, d);
+                                    }
+                                } else {    // Download
+                                    byte[] deciphered = CipherUtils.decipherFirstBlockCommonKey(Files.readAllBytes(s));
+                                    Files.write(d, deciphered);
+                                }
+                            } else {    // V3
+                                if (isUpload) {
+                                    byte[] data = Files.readAllBytes(s);
+                                    if (!isCleartext) {
+                                        data = CipherUtils.decipherFirstBlockCommonKey(data);
+                                    }
+                                    byte[] ciphered = CipherUtils.cipherFirstBlockSpecificKeyV3(data, deviceInfos.getDeviceKeyV3());
+                                    Files.write(d, ciphered);
+                                } else {    // Download
+                                    byte[] deciphered = CipherUtils.decipherFirstBlockSpecificKeyV3(Files.readAllBytes(s), deviceInfos.getDeviceKeyV3());
+                                    Files.write(d, deciphered);
+                                }
                             }
                         } else {
-                            // DO NOT COPY .cleartext file
-                            if (!CipherUtils.shouldBeCopied(s)) {
-                                LOGGER.finer("NOT copying file " + s.toString());
-                                return;
-                            }
+                            Files.copy(s, d);
+                        }
 
-                            int fileSize = (int) FileUtils.getFileSize(s.toAbsolutePath().toString());
-                            LOGGER.finer("Copying file " + s.toString() + " to " + d.toString() + " (" + fileSize + " bytes)");
+                        // Compute progress and speed
+                        int xferred = transferred.addAndGet(fileSize);
+                        long elapsed = System.currentTimeMillis() - startTime;
+                        double speed = ((double) xferred) / ((double) elapsed / 1000.0);
+                        LOGGER.finer("Transferred " + xferred + " bytes in " + elapsed + " ms");
+                        LOGGER.finer("Average speed = " + speed + " bytes/sec");
+                        TransferStatus status = new TransferStatus(xferred == folderSize, xferred, folderSize, speed);
 
-                            if (CipherUtils.shouldBeCiphered(s)) {
-                                if (deviceInfos.getFirmwareMajor() == 2) {
-                                    if (isUpload) {
-                                        if (isCleartext) {
-                                            byte[] ciphered = CipherUtils.cipherFirstBlockCommonKey(Files.readAllBytes(s));
-                                            Files.write(d, ciphered);
-                                        } else {
-                                            Files.copy(s, d);
-                                        }
-                                    } else {    // Download
-                                        byte[] deciphered = CipherUtils.decipherFirstBlockCommonKey(Files.readAllBytes(s));
-                                        Files.write(d, deciphered);
-                                    }
-                                } else {    // V3
-                                    if (isUpload) {
-                                        byte[] data = Files.readAllBytes(s);
-                                        if (!isCleartext) {
-                                            data = CipherUtils.decipherFirstBlockCommonKey(data);
-                                        }
-                                        byte[] ciphered = CipherUtils.cipherFirstBlockSpecificKeyV3(data, deviceInfos.getDeviceKeyV3());
-                                        Files.write(d, ciphered);
-                                    } else {    // Download
-                                        byte[] deciphered = CipherUtils.decipherFirstBlockSpecificKeyV3(Files.readAllBytes(s), deviceInfos.getDeviceKeyV3());
-                                        Files.write(d, deciphered);
-                                    }
-                                }
-                            } else {
-                                Files.copy(s, d);
-                            }
-
-                            // Compute progress and speed
-                            int xferred = transferred.addAndGet(fileSize);
-                            long elapsed = System.currentTimeMillis() - startTime;
-                            double speed = ((double) xferred) / ((double) elapsed / 1000.0);
-                            LOGGER.finer("Transferred " + xferred + " bytes in " + elapsed + " ms");
-                            LOGGER.finer("Average speed = " + speed + " bytes/sec");
-                            TransferStatus status = new TransferStatus(xferred == folderSize, xferred, folderSize, speed);
-
-                            // Call (optional) listener with transfer status
-                            if (listener != null) {
-                                CompletableFuture.runAsync(() -> listener.onProgress(status));
-                                if (status.isDone()) {
-                                    CompletableFuture.runAsync(() -> listener.onComplete(status));
-                                }
+                        // Call (optional) listener with transfer status
+                        if (listener != null) {
+                            CompletableFuture.runAsync(() -> listener.onProgress(status));
+                            if (status.isDone()) {
+                                CompletableFuture.runAsync(() -> listener.onComplete(status));
                             }
                         }
-                    } catch (Exception e) {
-                        throw new StoryTellerException("Failed to copy pack folder", e);
                     }
-                });
+                } catch (Exception e) {
+                    throw new StoryTellerException("Failed to copy pack folder", e);
+                }
+            });
+        }
         // When transfer is complete, generate device-specific boot file
         LOGGER.fine("Generating device-specific boot file");
         try {
