@@ -338,22 +338,23 @@ class WritePathCharacterizationTest {
 
         @Test
         @EnabledOnOs(OS.WINDOWS)
-        @DisplayName("a failed rewrite LEAVES .pi.new behind on the device")
-        void aFailedRewriteLeavesTheTemporaryFileBehind() throws IOException {
-            // Files.delete(newPiFile) sits after the copy, so any failure of the copy skips it. The
-            // device is left carrying a stray `.pi.new` that nothing ever cleans up. How the firmware
-            // reacts to an extra file at the partition root is unknown.
+        @DisplayName("a failed rewrite removes the temporary it created")
+        void aFailedRewriteRemovesTheTemporaryItCreated() throws IOException {
+            // `Files.delete` used to sit after the copy, so any failure of the copy skipped it and the
+            // device was left carrying a stray `.pi.new` holding an index that was never installed.
+            // The temporary is now removed on the way out. The failure is still reported and the
+            // previous index is still intact, so the device is left no worse than before the attempt.
             writeIndexFile(PACK_A, PACK_B);
+            byte[] before = indexBytes();
             Path index = partition.resolve(".pi");
             Files.setAttribute(index, "dos:readonly", true);
 
             try {
                 assertThrows(CompletionException.class, () -> writePackIndex(driver(), List.of(PACK_A)));
 
-                assertTrue(Files.exists(partition.resolve(".pi.new")),
-                        "the temporary file is not cleaned up when the replacement fails");
-                assertArrayEquals(encodeIndex(PACK_A), Files.readAllBytes(partition.resolve(".pi.new")),
-                        "and it holds the index that was meant to replace the current one");
+                assertFalse(Files.exists(partition.resolve(".pi.new")),
+                        "the temporary this operation created must not survive its failure");
+                assertArrayEquals(before, indexBytes(), "and the previous index is untouched");
             } finally {
                 Files.setAttribute(index, "dos:readonly", false);
             }

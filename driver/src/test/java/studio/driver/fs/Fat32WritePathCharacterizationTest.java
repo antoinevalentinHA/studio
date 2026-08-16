@@ -285,18 +285,21 @@ class Fat32WritePathCharacterizationTest {
         }
 
         @Test
-        @DisplayName("F6: a failed rewrite LEAVES .pi.new behind on the FAT32 partition")
-        void aFailedRewriteLeavesTheTemporaryFileBehind() throws IOException {
+        @DisplayName("F6: a failed rewrite removes the temporary it created, on FAT32 too")
+        void aFailedRewriteRemovesTheTemporaryItCreated() throws IOException {
+            // Same property as its NTFS twin, and measured to behave the same way here: FAT32 changes
+            // neither the cleanup nor the survival of the previous index.
             writeIndexFile(PACK_A, PACK_B);
+            byte[] before = indexBytes();
             Path index = partition.resolve(".pi");
             Files.setAttribute(index, "dos:readonly", true);
 
             try {
                 assertThrows(CompletionException.class, () -> writePackIndex(driver(), List.of(PACK_A)));
 
-                assertTrue(Files.exists(partition.resolve(".pi.new")),
-                        "the temporary file is not cleaned up when the replacement fails");
-                assertArrayEquals(encodeIndex(PACK_A), Files.readAllBytes(partition.resolve(".pi.new")));
+                assertFalse(Files.exists(partition.resolve(".pi.new")),
+                        "the temporary must not survive a failed installation on FAT32 either");
+                assertArrayEquals(before, indexBytes(), "and the previous index is untouched");
             } finally {
                 Files.setAttribute(index, "dos:readonly", false);
             }
