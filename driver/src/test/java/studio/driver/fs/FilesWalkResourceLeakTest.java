@@ -58,6 +58,37 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * closes its own directories. FAT32 is also what a device actually uses, and it is where the
  * residue was first noticed, during the C6c failure scenarios.
  *
+ * <h2>Why the failure is injected on a download</h2>
+ *
+ * <p>The leak lives in {@code copyPackFolder}, which serves both directions. It used to be reached
+ * here through {@code uploadPack}, by planting a conflicting {@code ni} in the destination
+ * {@code .content} folder: clear-text files are copied with {@code Files.copy} and no
+ * {@code REPLACE_EXISTING}, so the copy threw while the walk of the source was still in progress.
+ *
+ * <p>C6d-5 made that injection unreachable, and deliberately so. {@code uploadPack} now claims
+ * {@code .content/<folder>} with an exclusive {@code Files.createDirectory} and refuses outright if
+ * it already exists, which is exactly the state this fixture used to build. The refusal happens
+ * before the device metadata is read and before {@code copyPackFolder} is ever called, so the walk
+ * no longer runs at all. The assertions would still have passed — the exception is still a
+ * {@code FileAlreadyExistsException}, and a source tree that was never opened is trivially
+ * removable — while covering nothing. That is a silent loss of coverage, and CI cannot catch it
+ * because this class only runs against a FAT32 volume.
+ *
+ * <p>The injection therefore moved to {@code downloadPack}, which is the other caller of
+ * {@code copyPackFolder} and whose destination is still created with {@code mkdirs()}: C6d-5 changed
+ * nothing there, because a download writes into the user's own library rather than onto the card,
+ * and the ownership question is not the same. The mechanism is identical — a conflicting clear-text
+ * file in the destination, {@code Files.copy} without {@code REPLACE_EXISTING}, the walk abandoned
+ * part-way — and so is the invariant these tests assert: <strong>the tree being walked must stay
+ * fully removable once the failed copy has returned</strong>. What changed is which tree plays that
+ * role. On a download it is the device's own {@code .content} folder, which is if anything the more
+ * interesting of the two: it is the one that actually sits on FAT32 on a real device.
+ *
+ * <p>The upload direction keeps its control case below, where the walk runs to completion.
+ * <strong>There is no longer any way to make an upload fail mid-walk from the outside</strong>,
+ * which is a consequence of C6d-5 rather than a gap in this class: the only reachable upload failure
+ * is now the refusal, and it happens before the walk starts.
+ *
  * <p><strong>Opt-in, with the same two guards as the other FAT32 classes.</strong>
  *
  * <pre>
@@ -150,17 +181,56 @@ class FilesWalkResourceLeakTest {
     }
 
     /**
-     * Makes the next upload fail part-way through the walk of the source: clear-text files are copied
-     * with {@code Files.copy} and no {@code REPLACE_EXISTING}, so a conflicting {@code ni} already in
-     * the destination throws while the source walk is still in progress.
+     * Puts a real pack on the device, so that a download has something to walk.
+     *
+     * <p>This goes through {@code uploadPack} rather than writing the folder by hand: the walked tree
+     * has to be exactly what a transfer produces, ciphered assets and generated {@code bt} included.
+     * The destination does not exist yet, so C6d-5's exclusive claim succeeds and the upload runs
+     * nominally.
+     *
+     * @return the device's content folder for {@link #PACK} — the tree the download will walk
      */
-    private void planUploadFailure(FsStoryTellerAsyncDriver driver) throws IOException {
-        Path contentFolder = partition.resolve(".content").resolve(driver.computePackFolderName(PACK.toString()));
-        Files.createDirectories(contentFolder);
-        Files.write(contentFolder.resolve("ni"), filler(7, 'X'));
+    private Path putPackOnTheDevice(FsStoryTellerAsyncDriver driver) throws IOException {
+        driver.uploadPack(PACK.toString(), sourcePack("pack-to-download").toString(), null).join();
+        return partition.resolve(".content").resolve(driver.computePackFolderName(PACK.toString()));
+    }
+
+    /**
+     * Makes the next download fail part-way through the walk of the device folder: clear-text files
+     * are copied with {@code Files.copy} and no {@code REPLACE_EXISTING}, so a conflicting {@code ni}
+     * already in the destination throws while the walk is still in progress.
+     *
+     * <p>{@code downloadPack} writes into {@code <outputPath>/<uuid>}, and creates it with
+     * {@code mkdirs()} — untouched by C6d-5, which only claims the device-side {@code .content}
+     * folder. Seeding that destination is what this does.
+     *
+     * @return the output directory to hand to {@code downloadPack}
+     */
+    private Path planDownloadFailure(String outputName) throws IOException {
+        Path output = library.resolve(outputName);
+        Path destination = output.resolve(PACK.toString());
+        Files.createDirectories(destination);
+        Files.write(destination.resolve("ni"), filler(7, 'X'));
+        return output;
     }
 
     // ------------------------------------------------------------------ observation
+
+    /**
+     * How many regular files a tree holds, or {@code 0} if it does not exist.
+     *
+     * <p>Used to prove the walk was actually under way when it failed. A test that asserts "nothing
+     * was left behind" passes trivially when nothing was ever opened, which is precisely the trap
+     * C6d-5 set for the previous upload-based fixture.
+     */
+    private static long countRegularFiles(Path root) throws IOException {
+        if (!Files.exists(root)) {
+            return 0L;
+        }
+        try (Stream<Path> paths = Files.walk(root)) {
+            return paths.filter(Files::isRegularFile).count();
+        }
+    }
 
     /**
      * Deletes a tree deepest-first and reports what could not be removed.
@@ -211,15 +281,15 @@ class FilesWalkResourceLeakTest {
     // ------------------------------------------------------------------ the leak
 
     @Test
-    @DisplayName("a copy interrupted mid-walk releases its handles on the source tree")
-    void anInterruptedCopyReleasesTheSourceTree() throws Exception {
-        Path source = sourcePack("source-pack");
+    @DisplayName("a copy interrupted mid-walk releases its handles on the walked tree")
+    void anInterruptedCopyReleasesTheWalkedTree() throws Exception {
         FsStoryTellerAsyncDriver driver = DriverTestSupport.pluggedDriverMountedOn(partition);
-        planUploadFailure(driver);
+        Path walkedTree = putPackOnTheDevice(driver);
+        Path output = planDownloadFailure("download-out");
 
         CompletionException raised = null;
         try {
-            driver.uploadPack(PACK.toString(), source.toString(), null).join();
+            driver.downloadPack(PACK.toString(), output.toString(), null).join();
         } catch (CompletionException e) {
             raised = e;
         }
@@ -227,30 +297,37 @@ class FilesWalkResourceLeakTest {
         // The business failure is unchanged: this is about the handle, not about the error.
         assertTrue(raised != null && hasCause(raised, FileAlreadyExistsException.class),
                 "the copy should still fail the way it always did, got: " + raised);
+        // And it must have failed DURING the walk, not before it: if the traversal never started
+        // there is no abandoned stream and the assertion below would hold vacuously. Files the walk
+        // did copy before hitting the conflicting `ni` are the proof that it was under way.
+        assertTrue(Files.exists(walkedTree), "precondition: the device folder is what was walked");
+        assertTrue(countRegularFiles(output.resolve(PACK.toString())) > 1,
+                "the walk must have copied something before it failed, otherwise this test is vacuous;"
+                        + " destination holds " + countRegularFiles(output.resolve(PACK.toString())) + " file(s)");
 
-        // The subject of the test. Before the fix the abandoned walk left `source-pack`
-        // delete-pending, so the library it lives in could not be removed.
-        assertEquals(List.of(), deleteTree(library),
-                "the source tree must be fully removable once the failed copy has returned");
+        // The subject of the test. Before the fix the abandoned walk left the walked folder
+        // delete-pending, so the tree it lives in could not be removed.
+        assertEquals(List.of(), deleteTree(partition),
+                "the walked tree must be fully removable once the failed copy has returned");
     }
 
     @Test
-    @DisplayName("repeated failed uploads do not accumulate handles on their sources")
+    @DisplayName("repeated failed downloads do not accumulate handles on the walked tree")
     void repeatedFailuresDoNotAccumulateHandles() throws Exception {
         FsStoryTellerAsyncDriver driver = DriverTestSupport.pluggedDriverMountedOn(partition);
-        planUploadFailure(driver);
+        putPackOnTheDevice(driver);
 
         for (int i = 0; i < 5; i++) {
-            Path source = sourcePack("pack-" + i);
+            Path output = planDownloadFailure("download-out-" + i);
             try {
-                driver.uploadPack(PACK.toString(), source.toString(), null).join();
+                driver.downloadPack(PACK.toString(), output.toString(), null).join();
             } catch (CompletionException expected) {
                 // Every attempt fails on the same conflicting file.
             }
         }
 
-        assertEquals(List.of(), deleteTree(library),
-                "no failed attempt may leave a handle behind on its source");
+        assertEquals(List.of(), deleteTree(partition),
+                "no failed attempt may leave a handle behind on the tree it walked");
     }
 
     // ------------------------------------------------------------------ controls

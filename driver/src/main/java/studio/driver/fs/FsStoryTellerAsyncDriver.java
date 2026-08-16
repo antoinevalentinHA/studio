@@ -23,6 +23,7 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -525,9 +526,29 @@ public class FsStoryTellerAsyncDriver {
             String folderName = this.partitionMountPoint + File.separator + CONTENT_FOLDER + File.separator + computePackFolderName(uuid);
             LOGGER.fine("Uploading pack to folder: " + folderName);
 
-            // Create destination folder
-            File destFolder = new File(folderName);
-            destFolder.mkdirs();
+            // Claim the destination before anything is transferred into it. `.content` is shared by
+            // every pack, so its existence is normal and it is created if missing; the pack's own
+            // folder is created exclusively, which decides here, once and atomically, whether this
+            // upload owns it. `mkdirs()` answered the same question and threw the answer away, so a
+            // folder that was already there was written into as if it were ours.
+            Path destFolderPath = Paths.get(folderName);
+            try {
+                Files.createDirectories(destFolderPath.getParent());
+                Files.createDirectory(destFolderPath);
+            } catch (FileAlreadyExistsException preexisting) {
+                // Not ours. It could be the residue of an interrupted upload, of a delete that could
+                // not remove it, of another tool or of a hand edit, and nothing here can tell which.
+                // Writing into it would merge two packs into one folder and index the result as valid;
+                // emptying it would destroy content whose provenance we do not know.
+                LOGGER.warning("Refusing to upload the pack: a destination folder already exists at "
+                        + folderName + ", and it was not created by this operation");
+                return CompletableFuture.failedFuture(new StoryTellerException(
+                        "A pack content folder already exists on the device partition: " + folderName
+                                + ". It was not created by this operation, so it is neither written into,"
+                                + " merged with nor removed. Establish where it came from before removing"
+                                + " it by hand.", preexisting));
+            }
+            File destFolder = destFolderPath.toFile();
             // Copy folder with progress tracking
             return getDeviceInfos().thenCompose(deviceInfos ->
                     CompletableFuture.supplyAsync(() -> {
