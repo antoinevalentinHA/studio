@@ -43,12 +43,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * A photograph of the write path as it stands, taken before anything is hardened.
  *
- * <p>These are <strong>characterization tests</strong> in the strict sense: they encode what
- * {@code writePackIndex}, {@code uploadPack} and {@code deletePack} do today, including the parts
- * that are plainly undesirable. A test here asserting that {@code .pi} loses its hidden attribute is
- * not a statement that it should; it is a statement that it does, so that the day the behaviour
- * changes the change is visible and deliberate. Names describe the observed behaviour, not the
- * wished-for one.
+ * <p>These began as <strong>characterization tests</strong> in the strict sense: they encode what the
+ * index rewrite, {@code uploadPack} and {@code deletePack} do today, including the parts that are
+ * plainly undesirable. A test asserting that {@code .pi} loses its hidden attribute is not a
+ * statement that it should; it is a statement that it does, so that the day the behaviour changes
+ * the change is visible and deliberate.
+ *
+ * <p><strong>A few have since been converted into specifications</strong>, each time the behaviour
+ * they recorded was corrected and the test went red: the free-space precheck no longer truncates to
+ * an {@code int}, no longer counts a file the transfer never copies, and a failed rewrite no longer
+ * leaves its temporary behind. Those now assert what must happen. The rest still describe what
+ * happens, and their names say so — none of them says {@code should}.
  *
  * <p>Everything runs against a temporary directory standing in for the device partition. On Windows
  * that is NTFS. <strong>None of this says anything about FAT32</strong>, which is what a device

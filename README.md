@@ -1,4 +1,117 @@
-[![Release](https://img.shields.io/github/v/release/marian-m12l/studio)](https://github.com/marian-m12l/studio/releases/latest)
+About this fork
+===============
+
+This is a fork of [marian-m12l/studio](https://github.com/marian-m12l/studio), maintained
+independently and focused on **robustness in real use**: making the device detect reliably, making
+failures report honestly, and progressively hardening what STUdio writes to the card. The upstream
+project has seen little activity recently; this fork keeps the same purpose, licence and
+attribution, and adds fixes, tests and characterization work on top.
+
+**It is work in progress, not a finished product.** Several parts of the write path are still open,
+and nothing here claims to survive a power cut. Read *Current status* and *Limitations* below before
+deciding whether it fits your use.
+
+## What this fork changes
+
+Grouped by area rather than listed change by change. The detail is in `TESTING.md` and the commit
+history.
+
+**Device and transport**
+
+- The partition search waits for the OS to mount the device instead of giving up after ten seconds,
+  and an unplug cancels a search in flight.
+- A dropped monitoring channel is no longer reported as a failed transfer.
+- The libusb context has a single owner, with an idempotent init and shutdown, and the detection
+  workers survive transient failures instead of dying silently.
+- File handles are released on every path out, not only the nominal one.
+
+**Pack index and filesystem**
+
+- A `.pi` whose length is not a whole number of 16-byte records is rejected rather than turned into
+  a fabricated pack UUID.
+- An index entry whose content is missing no longer makes the whole device unreadable; the other
+  packs stay listable.
+- The free-space precheck is `long` end to end and counts what the transfer is known to add — cipher
+  padding, the boot file, the index growth and its temporary copy — instead of summing source sizes
+  and truncating to an `int`.
+- The temporary `.pi.new` is created exclusively, removed again on a controlled failure, and a
+  pre-existing one is refused rather than overwritten.
+- The temporary is synchronised, then installed with a single `Files.move(ATOMIC_MOVE)`, so the index
+  is no longer written through in place. If the atomic move is unsupported the operation fails —
+  there is deliberately no fallback to the previous non-atomic copy.
+
+**Testing**
+
+- A CI workflow running the Java suite on Linux and Windows, plus the JavaScript suite.
+- Characterization and specification tests covering the metadata, index, detection and write paths.
+- An opt-in FAT32 suite, exercised by hand on a disposable volume — see `TESTING.md`.
+- One documented session of real device operations — see `FIELD-VALIDATION.md`.
+
+## Current status
+
+Actively worked on, and **not finished**. What is described above is implemented and tested in the
+conditions documented in `TESTING.md`. What is still open, and known to be:
+
+- an upload that fails part-way leaves an orphan `.content` folder that nothing cleans up;
+- retrying that upload has no defined semantics — it fails on the clear-text files;
+- `deletePack` removes the index entry before the content, so a failed removal leaves the content
+  behind, de-indexed;
+- nothing detects or reports partial states on a device at connection time.
+
+Use the operational protocol in `FIELD-VALIDATION.md` if you are writing to a real device.
+
+## Limitations
+
+- **No crash-safety is claimed or proven.** The improvements above concern ordinary failures —
+  errors returned by the filesystem — not power loss or physical removal mid-write.
+- `force()` asks the operating system to push a file to the card. It is not evidence that the bytes
+  reached the flash: the card's controller may acknowledge earlier, and nothing here can observe it.
+- `ATOMIC_MOVE` is atomic with respect to the filesystem. It is not a guarantee about power loss.
+- FAT32, which is what a device uses, has no journal.
+- The FAT corruption incident recorded in `FIELD-VALIDATION.md` is a **forensic hypothesis**, not a
+  demonstrated cause. Nothing in this repository establishes what caused it.
+
+## Testing
+
+At the time of writing: **164 Java tests** in the standard suite, **172** with the opt-in FAT32 suite
+enabled, **23 JavaScript tests**. All green.
+
+Two caveats worth knowing before reading anything into those numbers:
+
+- **CI never exercises FAT32.** A hosted runner has no such volume, so the opt-in tests skip there
+  and are validated by hand on a disposable VHD instead.
+- Field results come from one session, one machine, two devices. They do not generalise to other
+  firmware revisions, other cards or other Windows versions.
+
+`TESTING.md` describes how to run everything, what is covered, and what is deliberately not.
+
+## Getting started
+
+There is **no dedicated release for this fork yet**. The download link in the upstream instructions
+below points at upstream's own build, which does **not** contain any of the changes described here.
+Using this fork means building it — the *For developers* section below still applies, and
+`mvn clean install` produces the distribution archive in `web-ui/target/`.
+
+Packaging a release for the fork has not been decided.
+
+## Relationship to upstream
+
+Based on STUdio by [@marian-m12l](https://github.com/marian-m12l), whose reverse-engineering work
+this exists on top of. Licence, attribution and disclaimers are unchanged and reproduced below. The
+fork can be rebased on upstream if it becomes active again; until then the changes above are
+maintained here.
+
+---
+
+The rest of this file is the upstream README. Two links have been relabelled so that it is clear
+they point at upstream builds rather than at this fork; nothing else in it is changed.
+
+---
+
+[![Upstream release](https://img.shields.io/github/v/release/marian-m12l/studio?label=upstream%20release)](https://github.com/marian-m12l/studio/releases/latest)
+
+*This badge and the download links below refer to **upstream** builds, which do not include this
+fork's changes. This fork has no release of its own yet — see [Getting started](#getting-started).*
 
 > [!WARNING]
 > Support for V3 devices has been added thanks to the community effort! :partying_face:
@@ -36,8 +149,9 @@ USAGE
 
 ### Installation
 
-* **Download** [the latest release](https://github.com/marian-m12l/studio/releases/latest) (alternatively,
-you can [build the application](#for-developers)).
+* **Download** [the latest upstream release](https://github.com/marian-m12l/studio/releases/latest)
+— this is upstream's build and does not contain this fork's changes; there is no fork release yet —
+(alternatively, you can [build the application](#for-developers)).
 * **Unzip** the distribution archive
 * **Run the launcher script**: either `studio-linux.sh`, `studio-macos.sh` or `studio-windows.bat` depending on your
 platform. You may need to make them executable first.

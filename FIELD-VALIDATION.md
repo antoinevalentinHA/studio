@@ -115,7 +115,8 @@ Two things in particular do **not** follow from this incident or from the operat
 it:
 
 - that unsafe disconnection is the sole mechanism by which this can happen;
-- that the `.pi` write path is now sound. It has not been modified. See the last section.
+- that the `.pi` write path is now sound. It was unmodified at the time of these operations, and has
+  been changed since — but by filesystem work, not by anything observed here. See the last section.
 
 ## Operational write protocol
 
@@ -147,14 +148,34 @@ The field results above concern detection, transfer tracking, handle lifecycle a
 None of them touches the integrity of what is written to the card, and none should be read as
 evidence about it.
 
-As of this commit:
+### What has changed since, and on what evidence
 
-- `writePackIndex` is unchanged. It writes `.pi.new`, then replaces `.pi` with a non-atomic copy,
-  then deletes the temporary file.
-- Nothing in the codebase forces data to the card before reporting success.
-- The `.pi` write path is the main remaining integrity subject.
-- FAT32 behaviour is still uncharacterised; the automated suite covers NTFS only, and its FAT32 test
-  is opt-in (`TESTING.md`).
+The `.pi` write path has been reworked since these operations: the index is now written to a
+temporary that is created exclusively and cleaned up on failure, synchronised with `force`, and
+installed by a single atomic move with no fallback to the previous non-atomic copy. The free-space
+precheck and the index parsing were hardened too. `TESTING.md` describes all of it.
+
+**None of that was validated on a device.** The evidence behind those changes is of one kind only:
+
+| Kind of evidence | What it covers |
+| --- | --- |
+| Automated tests | NTFS on Linux and Windows, in CI |
+| Filesystem characterization | one disposable FAT32 VHD, run by hand, never in CI |
+| Field observation | the sessions recorded above — **which predate these changes** |
+| Not proven | anything about a real device running the reworked write path |
+
+A VHD is not a story teller. It shares a filesystem format and nothing else: no firmware, no SD
+controller, no removable-media timing. **No field observation in this document was made with the
+reworked write path in place**, and none should be presented as if it were.
+
+### What is still open
+
+- An upload that fails part-way leaves an orphan `.content` folder that nothing cleans up, and
+  retrying it has no defined semantics.
+- `deletePack` rewrites the index before removing the content it points at.
+- Nothing detects or reports partial states on a device at connection time.
+- Firmware behaviour remains unknown: how a device reacts to a stray `.pi.new`, to a visible `.pi`,
+  or to an index whose size is not a multiple of 16 is not documented anywhere here.
 
 No conclusion about resilience to interruption or to power loss should be drawn from the field
-results recorded in this document.
+results recorded in this document, nor from the filesystem work that followed them.
