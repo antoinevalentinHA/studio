@@ -45,23 +45,42 @@ suite too.
 
 ## What these tests are, and what they are not
 
-They are **characterization tests**. They pin what the code does today so that a later change is
-visible, and they were written before any behaviour was modified. Several of them assert things that
-are wrong — a truncated `.md` reporting firmware `0.0`, for one. Those are marked `KNOWN GAP` in
-their display name and explained in a comment.
+The suite holds two kinds of test, and telling them apart matters.
 
-A `KNOWN GAP` test passing does not mean the behaviour is acceptable. It means the behaviour is
-known, and that the day someone fixes it the test will fail and force a deliberate decision. When the
-integrity work starts, these are the tests to convert from "this is what happens" to "this is what
-must happen".
+**Characterization tests** pin what the code does today so that a later change is visible. They were
+written before any behaviour was modified, and several of them assert things that are wrong — a
+truncated `.md` reporting firmware `0.0`, for one. Those are marked `KNOWN GAP` in their display name
+and explained in a comment. A `KNOWN GAP` test passing does not mean the behaviour is acceptable. It
+means the behaviour is known, and that the day someone fixes it the test will fail and force a
+deliberate decision.
 
-That conversion has happened twice so far. The test that asserted the `.md` stream stayed open on
-failure paths now asserts the opposite, and the class it lives in went back to `@TempDir` so that its
-cleanup fails loudly if the leak ever returns. The three that recorded a truncated `.pi` being turned
-into a fabricated pack now require it to be rejected instead. Later suites are specification tests
-from the start.
+**Specification tests** state what the code must do. They came later, as each defect was fixed, and
+they are what the hardening work is held to.
+
+Tests move from the first category to the second when a behaviour is corrected, never silently: the
+old test goes red, the change is deliberate, and the assertions are inverted on the same fixture.
+That has happened for the `.md` stream that stayed open on failure paths, for the truncated `.pi`
+that produced a fabricated pack, for the free-space estimate that truncated to an `int`, and for the
+`.pi.new` left behind by a failed rewrite. Whole classes written after the fact —
+`ReadPathHardeningTest`, `PackTransferSizeEstimatorTest`, `PackIndexTemporaryFileTest`,
+`PackIndexInstallationTest` — are specifications from the start.
+
+`WritePathCharacterizationTest` and `Fat32WritePathCharacterizationTest` now hold both: most of their
+cases still record behaviour that has not been changed, a few have been converted. The individual
+tests say which they are.
 
 Nothing here touches a device. Fixtures are synthesised in code; no device data is committed.
+
+## Current counts
+
+| Suite | Tests |
+| --- | --- |
+| Java, standard | **164**, 12 skipped — the opt-in FAT32 classes |
+| Java, with `-Dstudio.test.fat32.root=<volume>` | **172**, none skipped |
+| JavaScript | **23** |
+
+On Linux the Java totals are the same with a higher skip count, because the Windows-only cases are
+skipped rather than absent.
 
 ## Coverage map
 
@@ -77,8 +96,12 @@ counts.
 | `.md` parsing, version dispatch, key derivation, stream lifecycle | `DeviceMetadataCharacterizationTest` | 4 handle-lifecycle cases are Windows-only |
 | `.pi` parsing | `PackIndexCharacterizationTest` | the malformed-index cases are specifications, not characterization |
 | `.pi` framing, orphan index entries, stream ownership on reads | `ReadPathHardeningTest` | **specifications**, not characterization: what the read path must guarantee |
-| Write path: `writePackIndex`, upload ordering, retry, delete ordering, free-space estimate | `WritePathCharacterizationTest` | characterization only; runs on the runner's temporary directory, NTFS on Windows; 5 cases Windows-only |
+| Write path: index rewrite, upload ordering, retry, delete ordering, free-space estimate | `WritePathCharacterizationTest` | mostly characterization, a few converted specifications; runs on the runner's temporary directory, NTFS on Windows; 5 cases Windows-only |
 | Same, on FAT32, plus what a pack costs in allocated space | `Fat32WritePathCharacterizationTest` | opt-in, see below |
+| What the free-space precheck must count | `PackTransferSizeEstimatorTest` | **specifications** — a conservative bound on logical bytes, explicitly not on allocated space |
+| `.pi.new` ownership, exclusive creation, cleanup | `PackIndexTemporaryFileTest` | **specifications** |
+| Index installed by an atomic move, synchronised first, no fallback | `PackIndexInstallationTest` | **specifications** |
+| The driver delegates the index write to an injectable writer | `PackIndexWriterSeamTest` | structural only; asserts no integrity property |
 | Directory streams released when a pack copy is interrupted | `FilesWalkResourceLeakTest` | opt-in FAT32 — the leak exists everywhere but is only observable there |
 | Windows DOS attributes, `ATOMIC_MOVE` | `WindowsFileSemanticsCharacterizationTest` | Windows only, skipped elsewhere |
 | Same, on FAT32 | `Fat32AtomicMoveCharacterizationTest` | opt-in, see below |
@@ -98,8 +121,10 @@ Web UI (`web-ui/javascript`, run by yarn):
 
 Measured on NTFS, which is what a CI runner's temporary directory uses:
 
-- `new FileOutputStream(hiddenFile)` fails with "access denied". This is what the temporary-file
-  dance in `writePackIndex` works around.
+- `new FileOutputStream(hiddenFile)` fails with "access denied". This was the reason originally given
+  for writing the index through a temporary file. It is a `java.io` limitation, so it is no longer
+  the reason: the temporary exists to keep the index out of band until it can be installed in one
+  operation.
 - The NIO equivalents (`Files.newOutputStream`, `Files.write`) open the very same hidden file without
   complaint, and preserve the attribute. The constraint is a `java.io` limitation, not a Windows one.
 - `Files.copy(src, dst, REPLACE_EXISTING)` succeeds on a hidden target **and clears the hidden
@@ -135,27 +160,27 @@ it at a story teller regardless.
 
 ## Known limitations
 
-- **FAT32 is covered only by opt-in tests**, on a single volume, and never by CI. The write path has
-  been characterised there, which closes the measurement gap — it does not close the integrity one.
-  Field operations having gone well (see `FIELD-VALIDATION.md`) says nothing about it either: the
-  code that writes `.pi` has not been changed.
+- **FAT32 is covered only by opt-in tests**, on a single volume, and never by CI. The write path is
+  both characterised and exercised there, which closes the measurement gap — it does not close the
+  integrity one. Field operations having gone well (see `FIELD-VALIDATION.md`) says nothing about it
+  either: those observations predate the write-path changes and were not repeated afterwards.
 - **Durability is not tested and cannot be.** No test can establish that `force()` reached the card,
-  that the SD controller honoured it, or that a rename survives a power cut.
+  that the SD controller honoured it, or that a rename survives a power cut. What the tests do
+  establish is narrower: that the synchronisation is *requested*, and requested before the index is
+  installed.
 - **Firmware behaviour is unknown.** Nothing here says how a device reacts to a visible `.pi`, a
   `.pi` whose size is not a multiple of 16, or a stray `.pi.new` at the root.
-- **The write path is described, not hardened.** `writePackIndex`, `uploadPack`, `deletePack`,
-  `reorderPacks` and the free-space estimate are now covered — by `WritePathCharacterizationTest` on
-  the standard filesystem, and by `Fat32WritePathCharacterizationTest` on an opt-in FAT32 volume.
-  Those are **characterization** tests: they record what the code does, including the parts that are
-  plainly undesirable — `.pi` replaced by a non-atomic copy, `.pi.new` left behind by a failed
-  rewrite, an orphan `.content` folder left by a failed upload, an index rewritten before the content
-  it points at is removed, an estimate that does not upper-bound what gets allocated. **None of that
-  has been fixed.** A test passing here means the behaviour is known, not that it is safe, and
-  nothing in this repository establishes crash-safety or durability.
-- **There is no seam for the critical window.** `writePackIndex` builds its paths with
-  `Paths.get(String)`, so no instrumented filesystem can be substituted and there is no extension
-  point between writing `.pi.new` and the end of the copy. Proving directly that there is an instant
-  with no valid index on the device therefore remains out of reach.
+- **Part of the write path is hardened; part is only described.** The index installation, the
+  temporary file and the free-space precheck have specifications and have been changed. Three
+  recorded behaviours have **not** been fixed and are still characterization only: an upload that
+  fails part-way leaves an orphan `.content` folder that nothing cleans up, retrying it fails on the
+  clear-text files with no defined semantics, and `deletePack` rewrites the index before removing the
+  content it points at. A test passing on those means the behaviour is known, not that it is safe.
+- **The critical window is narrowed, not observable.** `PackIndexWriter` is injectable and its
+  create / write / sync / install steps can each be made to fail, which is what the installation
+  specifications use. What still cannot be observed is the inside of the move itself; proving
+  directly what a device sees at that instant remains out of reach, and so does anything about power
+  loss.
 - **Testability is no longer the obstacle it was.** `FsStoryTellerAsyncDriver` has a package-private
   constructor taking a `DevicePartitionLocator`, `DriverTestSupport` can build an instance without
   running the constructor and point it at a temporary directory, and `LibUsbDetectionHelper` exposes
