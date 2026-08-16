@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -298,27 +299,36 @@ class PackIndexTemporaryFileTest {
     // ------------------------------------------------------------------ R4
 
     @Nested
-    @DisplayName("R4 — a cleanup that fails after a successful installation")
-    class R4CleanupAfterSuccessfulInstall {
+    @DisplayName("R4 — a successful installation leaves nothing to clean up")
+    class R4NoCleanupAfterSuccessfulInstall {
 
         @Test
-        @DisplayName("CURRENT CONTRACT: the new index is live, yet the operation reports failure")
-        void aFailedCleanupIsReportedEvenThoughTheIndexIsInstalled() throws IOException {
-            // Characterization, not specification. Whether an operation whose effect is already
-            // committed should report failure is a decision this lot does not take: reporting success
-            // hides a stray file on the device, and reporting failure tells the caller that an index
-            // change it can already observe did not happen. Recorded here so that whichever way it is
-            // settled, the change is deliberate.
+        @DisplayName("the temporary is consumed by the installation, so no cleanup runs after it")
+        void aSuccessfulInstallationNeedsNoCleanup() throws IOException {
+            // This used to be a genuine question: an operation whose effect was already committed
+            // reported failure when only its cleanup had failed. The question has no subject any
+            // more — the index is installed by moving the temporary onto it, which consumes the
+            // source, so there is no post-installation step left that could fail.
+            //
+            // The writer below refuses every cleanup. A successful write must therefore not call it
+            // at all: reintroducing a cleanup after a successful installation would fire this test.
             writeIndex(PACK_A);
-            IOException planned = new IOException("cleanup refused");
+            List<Path> cleanupCalls = new ArrayList<>();
+            TemporaryFilePackIndexWriter writer = new TemporaryFilePackIndexWriter() {
+                @Override
+                void deleteTemporary(Path temporary) throws IOException {
+                    cleanupCalls.add(temporary);
+                    throw new IOException("nothing should need cleaning up after a successful install");
+                }
+            };
 
-            IOException raised = assertThrows(IOException.class,
-                    () -> write(new FailingAt("delete", planned), PACK_A, PACK_B));
+            write(writer, PACK_A, PACK_B);
 
-            assertEquals(planned, raised, "the cleanup failure is what the caller sees");
+            assertEquals(List.of(), cleanupCalls,
+                    "deleteTemporary must not be called once the index is installed");
             assertArrayEquals(encode(PACK_A, PACK_B), Files.readAllBytes(index()),
-                    "even though the new index is already installed and readable");
-            assertTrue(Files.exists(temporary()), "and the temporary is still there");
+                    "and the write is a success: the new index is in place");
+            assertFalse(Files.exists(temporary()), "the installation consumed the temporary");
         }
     }
 }
