@@ -6,9 +6,16 @@ complements them.
 
 ## Scope
 
-The runtime exercised was `0.4.3-SNAPSHOT` carrying the five hardening changes merged as C1 to C5,
-i.e. the tree at commit `22e457d`. The host was a single Windows machine. Two story tellers were
-used. The session performed real reads, real transfers and real deletions through the STUdio UI.
+This file records **two sessions**, months apart, on different builds.
+
+The first exercised `0.4.3-SNAPSHOT` carrying the five hardening changes merged as C1 to C5, i.e. the
+tree at commit `22e457d`. The host was a single Windows machine. Two story tellers were used. It
+performed real reads, real transfers and real deletions through the STUdio UI. Everything from
+*Devices exercised* to *Operational write protocol* comes from it.
+
+The second exercised the C6 series — the reworked `.pi` write path — on one of the same devices. It
+is recorded under *Field validation — the C6 write path on real hardware*, and it is the first field
+evidence of that code.
 
 These are field observations. They complement the automated tests; they do not replace them, and
 they do not generalise. Nothing here has been verified across other firmware revisions, other
@@ -20,8 +27,8 @@ Where a fact below is an observation rather than a demonstrated property, it say
 
 | Device | Serial | Notes |
 | --- | --- | --- |
-| A | `40024040004586` | four packs written and read back; also the device involved in the incident described below |
-| B | `23424040008282` | one pack written and read back |
+| A | `40024040004586` | first session: four packs written and read back; also the device involved in the incident described below. Second session: the only device exercised |
+| B | `23424040008282` | first session: one pack written and read back. Not exercised in the second session |
 
 Serial numbers are recorded because the read-only preflight below checks them, and because the
 incident timeline is tied to one specific device.
@@ -115,8 +122,9 @@ Two things in particular do **not** follow from this incident or from the operat
 it:
 
 - that unsafe disconnection is the sole mechanism by which this can happen;
-- that the `.pi` write path is now sound. It was unmodified at the time of these operations, and has
-  been changed since — but by filesystem work, not by anything observed here. See the last section.
+- that the `.pi` write path is now sound. It was unmodified at the time of these operations. It has
+  been reworked since, and later exercised on this same device in the second session below — but a
+  session in which nothing went wrong does not explain what went wrong here. See the last section.
 
 ## Operational write protocol
 
@@ -142,31 +150,107 @@ This protocol was **successful in the observed field operations**. That is all i
 exposure by removing a suspected trigger and by making each step verifiable; it does **not** make the
 `.pi` write path resilient to interruption, because it does not change that code.
 
+## Field validation — the C6 write path on real hardware
+
+A second session, separate from the one recorded above and on a later build, exercised the reworked
+`.pi` write path on a device. Everything above it predates that code; this is its first field
+evidence.
+
+### Runtime, host, device
+
+- Build: `0.4.3-SNAPSHOT` carrying the C6 series, rebuilt with `mvn clean install` — **188 tests, 0
+  failures, 12 skipped**. That is the build used in this field session, not a standing figure for the
+  repository.
+- Host: a single Windows machine.
+- Device exercised: **A**, serial `40024040004586`, firmware `3.3` — the same device involved in the
+  FAT incident described above, recovered since by a factory reset.
+- Device **B was not exercised** in this session.
+
+### Verification method
+
+Worth recording, because it is what makes the observations mean anything: **the checks were read from
+the driver log, not from the UI**. The UI reports what it was told; the log reports what the driver
+read back off the card.
+
+- the `Number of packs in index` line, i.e. the count parsed from the real `.pi`;
+- that count moving by **exactly ±1** per operation;
+- UUID uniqueness across the index;
+- the absence of `INVALID_STATE_ERR`, of libusb errors and of HTTP 500 over the window.
+
+### Operations exercised
+
+| Operation | Pack | Index count | Outcome |
+| --- | --- | --- | --- |
+| Add | Lucky Luke | 30 → 31 | completed |
+| Replace, same UUID | Cornebidouille | 31 → 30 → 31 | completed |
+| Replace, same UUID | Dans la classe | 31 → 30 → 31 | completed, after the separate finding below |
+
+A same-UUID replacement is **one of the more demanding normal write-path scenarios**: the existing
+entry and content are removed, then a pack of the same identity is written back. Mishandled, it is
+where a duplicate index entry or a leftover content folder would appear. It is an ordinary operation
+performed through the normal UI flow, not a stress test — nothing was pushed beyond ordinary use.
+
+### Observed result
+
+- Roughly ten writes over the session, all completing.
+- Final state: 31 packs on device A, re-read several times with a stable result.
+- Index counts consistent with every operation performed.
+- No `INVALID_STATE_ERR`, no libusb error, no HTTP 500 observed over the window.
+- No corruption observed on the device that had previously suffered the FAT incident.
+
+**What this establishes, and no more:** the operations performed during this session finished cleanly
+on this device, and the index was correct after each of them. It says nothing about operations that
+were not performed.
+
+### Limits
+
+- One machine, one firmware revision (`3.3`), one SD card, one device for the writes, one session.
+- **No interruption was attempted during an `ATOMIC_MOVE`**, nor during a copy.
+- No unsafe-disconnection or power-loss stress test of any kind.
+- **No physical crash-safety is demonstrated.** `force` remains a request to the operating system,
+  and an atomic move remains atomic with respect to the filesystem only — neither claim is tested by
+  a session in which nothing was interrupted.
+- Nothing here generalises to other devices, firmware revisions, cards, hosts or Windows versions.
+- An observation is an observation. One session is not a sample, and a clean run is not a guarantee.
+
+### A separate finding
+
+The session also exposed a stale converted-cache issue: a same-UUID re-transfer could reuse an
+out-of-date `converted_*` folder from the local library and send the previous content to the device.
+That lives in the library and conversion path, **not** in the device filesystem write path — the
+write itself was correct and reported honestly, and the index was right. It is tracked separately and
+is not addressed here.
+
 ## Remaining integrity gap
 
-The field results above concern detection, transfer tracking, handle lifecycle and libusb ownership.
-None of them touches the integrity of what is written to the card, and none should be read as
-evidence about it.
+The C1 to C5 field results concern detection, transfer tracking, handle lifecycle and libusb
+ownership. None of them touches the integrity of what is written to the card, and none should be read
+as evidence about it.
 
 ### What has changed since, and on what evidence
 
-The `.pi` write path has been reworked since these operations: the index is now written to a
+The `.pi` write path has been reworked since those operations: the index is now written to a
 temporary that is created exclusively and cleaned up on failure, synchronised with `force`, and
 installed by a single atomic move with no fallback to the previous non-atomic copy. The free-space
 precheck and the index parsing were hardened too. `TESTING.md` describes all of it.
 
-**None of that was validated on a device.** The evidence behind those changes is of one kind only:
+That code **has now been exercised on a device**, in the single session recorded above. What each
+kind of evidence covers:
 
 | Kind of evidence | What it covers |
 | --- | --- |
 | Automated tests | NTFS on Linux and Windows, in CI |
 | Filesystem characterization | one disposable FAT32 VHD, run by hand, never in CI |
-| Field observation | the sessions recorded above — **which predate these changes** |
-| Not proven | anything about a real device running the reworked write path |
+| Field observation | the C1–C5 sessions, **and** one session exercising the reworked write path on device A — adds, same-UUID replacements, index verified from the driver log |
+| Not proven | what happens if power is lost or the device pulled mid-install; that anything reached the flash; any other device, firmware revision, card or host; the cause of the FAT incident |
 
 A VHD is not a story teller. It shares a filesystem format and nothing else: no firmware, no SD
-controller, no removable-media timing. **No field observation in this document was made with the
-reworked write path in place**, and none should be presented as if it were.
+controller, no removable-media timing — so the characterization work and the field session remain
+different kinds of evidence and neither substitutes for the other.
+
+The field session moves one thing, and precisely one: **whether this code has ever run against real
+hardware**. It has, once, and the operations completed. It does not move anything about interruption,
+durability or generalisation, none of which that session tested.
 
 ### What is still open
 
