@@ -106,6 +106,27 @@ Ajouter toute information ou contexte utile à l'identification et à la résolu
 `
 };
 
+/**
+ * The part of an Error worth putting in front of a user, or null when there is none.
+ *
+ * <p>Some driver refusals carry a precise explanation — which folder is in the way, what was left
+ * untouched, what STUdio will not do about it — and that text already reaches the browser. Until now
+ * it only ever went into a bug-report template. This decides whether there is anything real to show:
+ * an Error is not guaranteed to carry a usable message, and the word "undefined" under a failure
+ * notice is worse than no detail at all.
+ *
+ * <p>Exported so the decision can be tested on its own. The project has no React rendering stack and
+ * this does not add one.
+ */
+export function backendDetails(error) {
+    const message = error && error.message;
+    if (typeof message !== 'string') {
+        return null;
+    }
+    const trimmed = message.trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+
 class IssueReportToast extends React.Component {
 
     render() {
@@ -124,6 +145,8 @@ class IssueReportToast extends React.Component {
         return (
             <>
                 <p>{this.props.content}</p>
+                {this.props.showDetails && backendDetails(this.props.error) &&
+                    <p><small>{backendDetails(this.props.error)}</small></p>}
                 <p>
                     <a href={this.url} target="_blank" rel="noopener noreferrer"><span className="glyphicon glyphicon-bell"/>{t('toasts.reportIssue')}</a>
                 </p>
@@ -134,7 +157,10 @@ class IssueReportToast extends React.Component {
 
 IssueReportToast.propTypes = {
     content: PropTypes.element.isRequired,
-    error: PropTypes.instanceOf(Error)
+    error: PropTypes.instanceOf(Error),
+    // Opt-in: without it every failure toast in the application would start showing raw backend
+    // text. Only the callers that know their backend message is meant for a user set this.
+    showDetails: PropTypes.bool
 };
 
 const mapStateToProps = (state, ownProps) => ({

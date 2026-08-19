@@ -76,6 +76,18 @@ function lastRenderKey() {
     return null;
 }
 
+/** The props handed to IssueReportToast on the last toast.update call, if any. */
+function lastRenderProps() {
+    const calls = toast.update.mock.calls;
+    for (let i = calls.length - 1; i >= 0; i--) {
+        const render = calls[i][1] && calls[i][1].render;
+        if (render && render.props) {
+            return render.props;
+        }
+    }
+    return null;
+}
+
 async function runAddFromLibrary(channel) {
     const dispatch = jest.fn(action => (typeof action === 'function' ? action(dispatch) : action));
     await actionAddFromLibrary('uuid-1', 'pack.zip', 'fs', 'fs', { channel }, t)(dispatch);
@@ -108,6 +120,50 @@ describe('actionAddFromLibrary', () => {
         channel.emit('storyteller.transfer.tid.done', { success: false });
 
         expect(lastRenderKey()).toBe('toasts.device.addingFailed');
+    });
+
+
+    it('C6d-6c: a request failure hands the backend explanation to the toast', async () => {
+        // The driver refuses some uploads with a precise reason — a pre-existing destination folder,
+        // for one. That text already arrives in the Error; what was missing is anything asking for it
+        // to be shown. `showDetails` is that request, and it is opt-in: every other failure toast in
+        // the application keeps its generic wording.
+        const channel = fakeChannel({ open: true });
+        const failure = new Error('Internal Server Error: A pack content folder already exists');
+        deviceService.addFromLibrary.mockRejectedValue(failure);
+
+        await runAddFromLibrary(channel);
+
+        const props = lastRenderProps();
+        expect(lastRenderKey()).toBe('toasts.device.addingFailed');
+        expect(props.error).toBe(failure);
+        expect(props.showDetails).toBe(true);
+    });
+
+    it('C6d-6c: a transfer the backend reports as unsuccessful shows no invented detail', async () => {
+        // This branch has no Error to draw on: the backend simply published success=false. Asking for
+        // details here would put an empty block under the message.
+        const channel = fakeChannel({ open: true });
+        deviceService.addFromLibrary.mockResolvedValue({ transferId: 'tid' });
+
+        await runAddFromLibrary(channel);
+        channel.emit('storyteller.transfer.tid.done', { success: false });
+
+        const props = lastRenderProps();
+        expect(lastRenderKey()).toBe('toasts.device.addingFailed');
+        expect(props.error).toBeUndefined();
+        expect(props.showDetails).toBeUndefined();
+    });
+
+    it('C6d-6c: a successful transfer leaves no error detail behind', async () => {
+        const channel = fakeChannel({ open: true });
+        deviceService.addFromLibrary.mockResolvedValue({ transferId: 'tid' });
+
+        await runAddFromLibrary(channel);
+        channel.emit('storyteller.transfer.tid.done', { success: true });
+
+        const props = lastRenderProps();
+        expect(props).toBeNull();
     });
 
     it('E5: losing the channel must NOT be reported as a failed transfer', async () => {
