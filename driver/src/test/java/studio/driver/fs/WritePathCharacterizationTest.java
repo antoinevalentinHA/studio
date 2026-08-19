@@ -28,7 +28,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -448,13 +450,33 @@ class WritePathCharacterizationTest {
 
     /* ================================================================== W5 */
 
+    /**
+     * Re-uploading a pack that is already on the device.
+     *
+     * <p><strong>Specifications, not characterization.</strong> These used to record what a retry did
+     * when it was allowed to run: the copy walked the source, aborted on the first clear-text file
+     * that already existed in the destination, and left a folder that was neither the old pack nor
+     * the new one — no {@code bt}, and whichever entries the walk had not reached yet simply missing.
+     * That is no longer reachable. An upload now claims {@code .content/<folder>} with an exclusive
+     * {@code Files.createDirectory} and is refused outright if it is already there, so the copy never
+     * starts and no partial state is produced.
+     *
+     * <p>The historical behaviour is kept in this comment rather than in a test, because a test can
+     * no longer exercise it from the outside. What the cases below assert is the contract that
+     * replaced it: <strong>a retry is a refusal, not a resume</strong>.
+     *
+     * <p>Distinct from {@link UploadDestinationOwnershipTest}, which plants a destination folder by
+     * hand to state the ownership rule in general. Here the folder exists for the one reason a user
+     * actually meets: the same pack was transferred a moment ago. The fixture is a real upload, and
+     * what is asserted is that the pack already on the device comes through untouched.
+     */
     @Nested
-    @DisplayName("W5 — retrying an upload over a partial state")
+    @DisplayName("W5 — re-uploading a pack that is already on the device")
     class W5Retry {
 
         @Test
-        @DisplayName("retrying the same pack FAILS on the clear-text files, which are copied without REPLACE_EXISTING")
-        void retryingOverAnExistingFolderFails() throws Exception {
+        @DisplayName("the second upload is refused before anything is copied")
+        void aSecondUploadOfTheSamePackIsRefused() throws Exception {
             writeIndexFile();
             Path source = sourcePack();
             FsStoryTellerAsyncDriver driver = driver();
@@ -463,51 +485,60 @@ class WritePathCharacterizationTest {
             CompletionException raised = assertThrows(CompletionException.class,
                     () -> driver.uploadPack(PACK_B.toString(), source.toString(), null).join());
 
-            assertTrue(hasCause(raised, FileAlreadyExistsException.class));
+            // The destination claim is what refuses, so the cause is the one Files.createDirectory
+            // raises — not, as it once was, a clear-text file colliding part-way through the copy.
+            assertTrue(hasCause(raised, FileAlreadyExistsException.class),
+                    "expected the destination claim to refuse, got: " + raised);
         }
 
         @Test
-        @DisplayName("a failed retry leaves an INCOMPLETE folder: the copy stops where it failed")
-        void aFailedRetryLeavesAnIncompleteFolder() throws Exception {
-            // Files.walk visits the source entries in directory order, and the copy aborts on the
-            // first clear-text file that already exists in the destination. Whatever the walk had not
-            // reached yet is simply never written, so the folder is left neither old nor new.
-            //
-            // Which entries survive depends on the order the filesystem returns them, so this test
-            // asserts only what holds on any platform: the conflicting file keeps its previous
-            // content, and `bt` — generated after the walk finishes — is absent, which is the
-            // reliable marker of a folder that was never completed.
-            writeIndexFile();
-            Path source = sourcePack();
-            FsStoryTellerAsyncDriver driver = driver();
-            Path contentFolder = partition.resolve(".content").resolve(driver.computePackFolderName(PACK_B.toString()));
-            Files.createDirectories(contentFolder);
-            Files.write(contentFolder.resolve("ni"), filler(7, 'X'));       // clear file: makes the copy fail
-
-            assertThrows(CompletionException.class,
-                    () -> driver.uploadPack(PACK_B.toString(), source.toString(), null).join());
-
-            assertArrayEquals(filler(7, 'X'), Files.readAllBytes(contentFolder.resolve("ni")),
-                    "the conflicting clear file kept its previous content");
-            assertFalse(Files.exists(contentFolder.resolve("bt")),
-                    "bt is written only once the walk completes, so its absence marks an unfinished folder");
-            assertTrue(fileNames(contentFolder).size() < 5,
-                    "a complete upload produces bt, li, ni, ri and si — this folder has "
-                            + fileNames(contentFolder));
-        }
-
-        @Test
-        @DisplayName("a retry after a successful upload does NOT add a second index entry")
-        void aFailedRetryDoesNotDuplicateTheIndexEntry() throws Exception {
+        @DisplayName("the pack already on the device is left complete and byte-identical")
+        void theExistingPackIsLeftIntact() throws Exception {
+            // The property that matters to a user who transfers the same pack twice by mistake: the
+            // copy that is already there must not be damaged. A refused retry produces no partial
+            // state at all, which is the exact opposite of what the old write path did.
             writeIndexFile();
             Path source = sourcePack();
             FsStoryTellerAsyncDriver driver = driver();
             driver.uploadPack(PACK_B.toString(), source.toString(), null).join();
+            Path contentFolder = partition.resolve(".content").resolve(driver.computePackFolderName(PACK_B.toString()));
+            List<String> namesBefore = fileNames(contentFolder);
+            Map<String, byte[]> bytesBefore = new LinkedHashMap<>();
+            for (String name : namesBefore) {
+                bytesBefore.put(name, Files.readAllBytes(contentFolder.resolve(name)));
+            }
 
             assertThrows(CompletionException.class,
                     () -> driver.uploadPack(PACK_B.toString(), source.toString(), null).join());
 
-            assertEquals(List.of(PACK_B), readPackIndex(driver), "the failure happens before the index is touched");
+            assertEquals(List.of("bt", "li", "ni", "ri", "si"), namesBefore,
+                    "the first upload produced a complete folder");
+            assertEquals(namesBefore, fileNames(contentFolder),
+                    "and the refused retry added nothing and removed nothing");
+            for (Map.Entry<String, byte[]> entry : bytesBefore.entrySet()) {
+                assertArrayEquals(entry.getValue(), Files.readAllBytes(contentFolder.resolve(entry.getKey())),
+                        entry.getKey() + " must be byte-identical after the refusal");
+            }
+        }
+
+        @Test
+        @DisplayName("the index is byte-identical, so the pack cannot end up listed twice")
+        void theIndexGainsNoSecondEntry() throws Exception {
+            // uploadPack appends the UUID without checking whether it is already present, so the only
+            // thing standing between a retry and a duplicate entry is that the refusal happens first —
+            // before the device metadata is read and long before the index is rewritten.
+            writeIndexFile();
+            Path source = sourcePack();
+            FsStoryTellerAsyncDriver driver = driver();
+            driver.uploadPack(PACK_B.toString(), source.toString(), null).join();
+            byte[] before = indexBytes();
+
+            assertThrows(CompletionException.class,
+                    () -> driver.uploadPack(PACK_B.toString(), source.toString(), null).join());
+
+            assertArrayEquals(before, indexBytes(), "the index must not be rewritten at all");
+            assertEquals(List.of(PACK_B), readPackIndex(driver), "and the pack is listed exactly once");
+            assertFalse(Files.exists(partition.resolve(".pi.new")), "no index temporary was created");
         }
     }
 

@@ -60,10 +60,10 @@ they are what the hardening work is held to.
 Tests move from the first category to the second when a behaviour is corrected, never silently: the
 old test goes red, the change is deliberate, and the assertions are inverted on the same fixture.
 That has happened for the `.md` stream that stayed open on failure paths, for the truncated `.pi`
-that produced a fabricated pack, for the free-space estimate that truncated to an `int`, and for the
-`.pi.new` left behind by a failed rewrite. Whole classes written after the fact —
-`ReadPathHardeningTest`, `PackTransferSizeEstimatorTest`, `PackIndexTemporaryFileTest`,
-`PackIndexInstallationTest` — are specifications from the start.
+that produced a fabricated pack, for the free-space estimate that truncated to an `int`, for the
+`.pi.new` left behind by a failed rewrite, and for the retry cases in W5. Whole classes written after
+the fact — `ReadPathHardeningTest`, `PackTransferSizeEstimatorTest`, `PackIndexTemporaryFileTest`,
+`PackIndexInstallationTest`, `UploadDestinationOwnershipTest` — are specifications from the start.
 
 `WritePathCharacterizationTest` and `Fat32WritePathCharacterizationTest` now hold both: most of their
 cases still record behaviour that has not been changed, a few have been converted. The individual
@@ -75,8 +75,8 @@ Nothing here touches a device. Fixtures are synthesised in code; no device data 
 
 | Suite | Tests |
 | --- | --- |
-| Java, standard | **164**, 12 skipped — the opt-in FAT32 classes |
-| Java, with `-Dstudio.test.fat32.root=<volume>` | **172**, none skipped |
+| Java, standard | **176**, 12 skipped — the opt-in FAT32 classes |
+| Java, with `-Dstudio.test.fat32.root=<volume>` | last measured at **172** before the C6d-5 additions; not re-measured since, because it needs the volume mounted |
 | JavaScript | **23** |
 
 On Linux the Java totals are the same with a higher skip count, because the Windows-only cases are
@@ -96,7 +96,8 @@ counts.
 | `.md` parsing, version dispatch, key derivation, stream lifecycle | `DeviceMetadataCharacterizationTest` | 4 handle-lifecycle cases are Windows-only |
 | `.pi` parsing | `PackIndexCharacterizationTest` | the malformed-index cases are specifications, not characterization |
 | `.pi` framing, orphan index entries, stream ownership on reads | `ReadPathHardeningTest` | **specifications**, not characterization: what the read path must guarantee |
-| Write path: index rewrite, upload ordering, retry, delete ordering, free-space estimate | `WritePathCharacterizationTest` | mostly characterization, a few converted specifications; runs on the runner's temporary directory, NTFS on Windows; 5 cases Windows-only |
+| Write path: index rewrite, upload ordering, retry, delete ordering, free-space estimate | `WritePathCharacterizationTest` | mostly characterization, a few converted specifications — W5 (retry) and parts of W3 and W7 are now specifications; runs on the runner's temporary directory, NTFS on Windows; 5 cases Windows-only |
+| A pre-existing `.content/<pack>` is refused, never merged into | `UploadDestinationOwnershipTest` | **specifications** — the general ownership rule, on a folder planted by hand |
 | Same, on FAT32, plus what a pack costs in allocated space | `Fat32WritePathCharacterizationTest` | opt-in, see below |
 | What the free-space precheck must count | `PackTransferSizeEstimatorTest` | **specifications** — a conservative bound on logical bytes, explicitly not on allocated space |
 | `.pi.new` ownership, exclusive creation, cleanup | `PackIndexTemporaryFileTest` | **specifications** |
@@ -173,9 +174,15 @@ it at a story teller regardless.
 - **Part of the write path is hardened; part is only described.** The index installation, the
   temporary file and the free-space precheck have specifications and have been changed. Three
   recorded behaviours have **not** been fixed and are still characterization only: an upload that
-  fails part-way leaves an orphan `.content` folder that nothing cleans up, retrying it fails on the
-  clear-text files with no defined semantics, and `deletePack` rewrites the index before removing the
-  content it points at. A test passing on those means the behaviour is known, not that it is safe.
+  fails part-way leaves an orphan `.content` folder that nothing cleans up, that orphan then makes
+  every later upload of the same pack refuse with no supported way to resolve it, and `deletePack`
+  rewrites the index before removing the content it points at. A test passing on those means the
+  behaviour is known, not that it is safe.
+- **The delete order is a deliberate choice, not an accident.** Removing the index entry before the
+  content means a failed removal leaves an unreferenced folder — invisible, and enough to make a
+  later upload of that pack refuse. Doing it the other way round would be worse: the index would
+  point at a folder being dismantled, and what a device makes of a pack whose content is half gone is
+  not documented anywhere. The order stays until something safer than either is designed.
 - **The critical window is narrowed, not observable.** `PackIndexWriter` is injectable and its
   create / write / sync / install steps can each be made to fail, which is what the installation
   specifications use. What still cannot be observed is the inside of the move itself; proving
