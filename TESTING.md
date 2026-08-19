@@ -75,9 +75,9 @@ Nothing here touches a device. Fixtures are synthesised in code; no device data 
 
 | Suite | Tests |
 | --- | --- |
-| Java, standard | **188**, 12 skipped — the opt-in FAT32 classes |
+| Java, standard | **193**, 12 skipped — the opt-in FAT32 classes |
 | Java, with `-Dstudio.test.fat32.root=<volume>` | last measured at **172** before the C6d-5 additions; not re-measured since, because it needs the volume mounted |
-| JavaScript | **23** |
+| JavaScript | **50** |
 
 On Linux the Java totals are the same with a higher skip count, because the Windows-only cases are
 skipped rather than absent.
@@ -111,6 +111,7 @@ counts.
 | Detection state machine: plug, unplug during search, replug | `FsDeviceDetectionTest` | |
 | libusb workers surviving transient failures, backoff, abort | `LibUsbWorkerResilienceTest` | covers the Windows polling path |
 | libusb context ownership, shared init, idempotent shutdown | `LibUsbLifecycleTest` | |
+| Nothing — proves Maven runs JUnit 5 for this module | `WebUiTestHarnessTest` | `web-ui` module; infrastructure only, asserts nothing about the application |
 
 Web UI (`web-ui/javascript`, run by yarn):
 
