@@ -75,7 +75,7 @@ Nothing here touches a device. Fixtures are synthesised in code; no device data 
 
 | Suite | Tests |
 | --- | --- |
-| Java, standard | **176**, 12 skipped — the opt-in FAT32 classes |
+| Java, standard | **188**, 12 skipped — the opt-in FAT32 classes |
 | Java, with `-Dstudio.test.fat32.root=<volume>` | last measured at **172** before the C6d-5 additions; not re-measured since, because it needs the volume mounted |
 | JavaScript | **23** |
 
@@ -98,6 +98,7 @@ counts.
 | `.pi` framing, orphan index entries, stream ownership on reads | `ReadPathHardeningTest` | **specifications**, not characterization: what the read path must guarantee |
 | Write path: index rewrite, upload ordering, retry, delete ordering, free-space estimate | `WritePathCharacterizationTest` | mostly characterization, a few converted specifications — W5 (retry) and parts of W3 and W7 are now specifications; runs on the runner's temporary directory, NTFS on Windows; 5 cases Windows-only |
 | A pre-existing `.content/<pack>` is refused, never merged into | `UploadDestinationOwnershipTest` | **specifications** — the general ownership rule, on a folder planted by hand |
+| Folders under `.content` that `.pi` does not reference | `UnreferencedPackFolderTest` | **specifications** — read-only: reporting one must leave the index, the folders and the listing untouched, and says nothing about where they came from |
 | Same, on FAT32, plus what a pack costs in allocated space | `Fat32WritePathCharacterizationTest` | opt-in, see below |
 | What the free-space precheck must count | `PackTransferSizeEstimatorTest` | **specifications** — a conservative bound on logical bytes, explicitly not on allocated space |
 | `.pi.new` ownership, exclusive creation, cleanup | `PackIndexTemporaryFileTest` | **specifications** |

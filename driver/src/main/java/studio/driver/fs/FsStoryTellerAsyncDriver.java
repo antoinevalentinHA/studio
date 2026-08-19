@@ -350,6 +350,65 @@ public class FsStoryTellerAsyncDriver {
                 });
     }
 
+    /**
+     * The folders under {@code .content} that no entry of {@code .pi} refers to.
+     *
+     * <p>Answers one question and only that one: which directories exist there that the index does
+     * not reference. It says nothing about where they came from — a delete that could not finish, an
+     * upload interrupted after it claimed its destination, another tool, a hand edit — because
+     * nothing on the card records that. In particular it does not mean "safe to remove": this method
+     * reads, and the driver offers no operation to act on what it finds.
+     *
+     * <p>Only the folder name is reported, and deliberately so. A {@code .content} folder carries the
+     * last eight hex characters of a pack UUID and nothing more, so the full UUID is simply not on
+     * the card. The comparison therefore runs one way only — every index entry is turned into the
+     * folder name it implies, and the names present are matched against that set. Nothing is ever
+     * reconstructed in the other direction.
+     *
+     * <p>Names are compared without regard to case. The card is FAT32, which does not distinguish
+     * case, and a pack folder is opened by the upper-case name its UUID implies; a folder differing
+     * only in case is the one the driver would open, so treating it as unreferenced would point at a
+     * pack that is in use. A false positive is the costly error here, and this avoids it.
+     *
+     * @return the names of the unreferenced folders, sorted, or an empty list when there is no
+     *         {@code .content} directory at all — never a partial answer standing in for a failure.
+     */
+    public CompletableFuture<List<String>> getUnreferencedPackContentFolders() {
+        if (this.device == null || this.partitionMountPoint == null) {
+            return CompletableFuture.failedFuture(new StoryTellerException("No device plugged"));
+        }
+
+        return readPackIndex()
+                .thenApply(packUUIDs -> {
+                    Set<String> referenced = new HashSet<>();
+                    for (UUID packUUID : packUUIDs) {
+                        referenced.add(computePackFolderName(packUUID.toString()).toUpperCase(Locale.ROOT));
+                    }
+
+                    List<String> unreferenced = new ArrayList<>();
+                    Path contentFolder = Paths.get(this.partitionMountPoint, CONTENT_FOLDER);
+                    // No `.content` at all is a device with no pack ever written, not a failure. A
+                    // listing that fails for any other reason is reported rather than flattened into
+                    // an empty answer, which would read as "nothing to see here".
+                    if (Files.isDirectory(contentFolder)) {
+                        try (Stream<Path> entries = Files.list(contentFolder)) {
+                            entries.filter(Files::isDirectory)
+                                    .map(entry -> entry.getFileName().toString())
+                                    .filter(name -> !referenced.contains(name.toUpperCase(Locale.ROOT)))
+                                    .forEach(unreferenced::add);
+                        } catch (IOException e) {
+                            throw new StoryTellerException(
+                                    "Failed to list pack content folders on device partition", e);
+                        }
+                    }
+                    // Sorted, because the order a filesystem hands back its entries is its own
+                    // business and callers should not inherit it.
+                    unreferenced.sort(Comparator.naturalOrder());
+                    LOGGER.fine("Unreferenced pack content folders: " + unreferenced.size());
+                    return unreferenced;
+                });
+    }
+
     private CompletableFuture<List<UUID>> readPackIndex() {
         return CompletableFuture.supplyAsync(() -> {
             String piFile = this.partitionMountPoint + File.separator + PACK_INDEX_FILENAME;
