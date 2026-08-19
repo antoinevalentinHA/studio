@@ -28,6 +28,7 @@ import Modal from "./Modal";
 import {
     LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT
 } from "../utils/storage";
+import {chooseDropAction} from "../utils/packs";
 
 import './PackLibrary.css';
 
@@ -87,44 +88,55 @@ class PackLibrary extends React.Component {
         }
         var data = JSON.parse(packData);
 
-        // Get the latest pack
-        var latestPack = data.packs[0];
-        console.log('latest pack: %o', latestPack);
-        // Get the latest device-compatible pack
-        var compatiblePack = data.packs.find(p => p.format === this.state.device.metadata.driver);
-        console.log('device-compatible pack: %o', compatiblePack);
+        const driverFormat = this.state.device.metadata.driver;
+        // Which artefact goes to the device is decided in utils/packs. It compares no timestamps and
+        // selects on more than format: nothing records which source a conversion output came from,
+        // and a conversion output can itself be archive, raw or fs.
+        const {action, source, cached} = chooseDropAction(data.packs, driverFormat);
+        console.log('drop action: %s (source: %o, cached: %o)', action, source, cached);
 
-        if (compatiblePack == null) {   // No compatible pack: convert latest pack
-            console.log('latest pack must be converted for driver: %s', this.state.device.metadata.driver);
+        if (action === 'none') {
+            // Nothing to transfer
+            return;
+        }
+
+        if (action === 'transfer') {
+            // No identifiable non-converted source is currently in the library, so there is no
+            // current source to compare this against and none to offer for re-conversion
+            console.log('OK, transferring pack: %o', cached);
+            this.doAddToDevice(cached, cached.path);
+            return;
+        }
+
+        if (action === 'convert') {   // No compatible pack: convert the source
+            console.log('pack must be converted for driver: %s', driverFormat);
             // Ask for enriched raw format preference
-            if (this.state.device.metadata.driver === 'raw' && localStorage.getItem(LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT) === null) {
+            if (driverFormat === 'raw' && localStorage.getItem(LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT) === null) {
                 this.setState({
                     allowEnrichedDialog: {
                         show: true,
-                        data: { pack: {...latestPack, format: this.state.device.metadata.driver}, format: this.state.device.metadata.driver, addToDevice: true }
+                        data: { pack: {...source, format: driverFormat}, format: driverFormat, addToDevice: true }
                     }
                 });
             } else {
                 // Pack is converted and stored in the local library, then transferred to the device
-                this.props.convertPackInLibrary(latestPack.uuid, latestPack.path, this.state.device.metadata.driver, this.props.settings.allowEnriched, this.context)
+                this.props.convertPackInLibrary(source.uuid, source.path, driverFormat, this.props.settings.allowEnriched, this.context)
                     .then(path => {
-                        this.doAddToDevice({...latestPack, format: this.state.device.metadata.driver}, path);
+                        this.doAddToDevice({...source, format: driverFormat}, path);
                     });
             }
-        } else if (latestPack.timestamp > compatiblePack.timestamp) {   // Compatible pack is not the latest pack: confirm re-conversion
-            // Ask for conversion confirmation
-            console.log('pack is out of date. re-convert from latest ?');
-            this.setState({
-                confirmConversionDialog: {
-                    show: true,
-                    data: { pack: {...latestPack, format: this.state.device.metadata.driver}, format: this.state.device.metadata.driver }
-                }
-            });
-        } else {
-            console.log('OK, transferring pack: %o', compatiblePack);
-            // OK, go on and transfer pack
-            this.doAddToDevice(compatiblePack, compatiblePack.path);
+            return;
         }
+
+        // A device-compatible pack exists, and so does a candidate that could be converted into one.
+        // Whether they correspond cannot be established here, so the choice is the user's.
+        console.log('cannot establish that the compatible pack matches the source candidate. asking.');
+        this.setState({
+            confirmConversionDialog: {
+                show: true,
+                data: { pack: {...source, format: driverFormat}, format: driverFormat, cached }
+            }
+        });
     };
 
     doAddToDevice = (data, path) => {
@@ -155,7 +167,7 @@ class PackLibrary extends React.Component {
 
     dismissConfirmConversionDialog = (answer) => {
         return () => {
-            if (answer) {
+            if (answer === 'convert') {
                 // Pack is converted and stored in the local library, then transferred to the device
                 this.props.convertPackInLibrary(this.state.confirmConversionDialog.data.pack.uuid, this.state.confirmConversionDialog.data.pack.path, this.state.confirmConversionDialog.data.format, this.props.settings.allowEnriched, this.context)
                     .then(path => this.doAddToDevice(this.state.confirmConversionDialog.data.pack, path))
@@ -167,6 +179,16 @@ class PackLibrary extends React.Component {
                             }
                         });
                     });
+            } else if (answer === 'transfer') {
+                // The user decides the existing pack is the one they want. STUdio cannot tell.
+                const cached = this.state.confirmConversionDialog.data.cached;
+                this.doAddToDevice(cached, cached.path);
+                this.setState({
+                    confirmConversionDialog: {
+                        show: false,
+                        data: null
+                    }
+                });
             } else {
                 this.setState({
                     confirmConversionDialog: {
@@ -379,10 +401,11 @@ class PackLibrary extends React.Component {
                        title={t('dialogs.library.askConfirmConversion.title')}
                        content={<div dangerouslySetInnerHTML={{__html: t('dialogs.library.askConfirmConversion.content')}} ></div>}
                        buttons={[
-                           { label: t('dialogs.shared.no'), onClick: this.dismissConfirmConversionDialog(false)},
-                           { label: t('dialogs.shared.yes'), onClick: this.dismissConfirmConversionDialog(true)}
+                           { label: t('dialogs.library.askConfirmConversion.cancel'), onClick: this.dismissConfirmConversionDialog('cancel')},
+                           { label: t('dialogs.library.askConfirmConversion.transfer'), onClick: this.dismissConfirmConversionDialog('transfer')},
+                           { label: t('dialogs.library.askConfirmConversion.convert'), onClick: this.dismissConfirmConversionDialog('convert')}
                        ]}
-                       onClose={this.dismissConfirmConversionDialog(false)}
+                       onClose={this.dismissConfirmConversionDialog('cancel')}
                 />}
 
                 {/* Device view, if plugged */}

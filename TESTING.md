@@ -118,6 +118,7 @@ Web UI (`web-ui/javascript`, run by yarn):
 | --- | --- | --- |
 | Event bus channel: subscribe while closed, reconnect, no duplicate handlers | `src/services/eventBusChannel.test.js` | drives the real `vertx3-eventbus-client` over a fake SockJS transport |
 | Transfer tracking: a lost channel is not a failed transfer | `src/actions/addFromLibrary.test.js` | |
+| Which artefact a drop sends to the device, and when the user is asked | `src/utils/packs.test.js` | the decision is a pure function; the component is not rendered |
 
 ## Windows filesystem findings
 
