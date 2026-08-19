@@ -324,7 +324,10 @@
       },
       "askConfirmConversion": {
         "title": "Convert story pack?",
-        "content": "<p>The device-compatible instance of the story pack is outdated. Convert latest instance?</p><p>(The converted pack will be stored in the local library)</p>"
+        "content": "<p>A device-compatible instance of this story pack is already in the library, but STUdio cannot check that it was produced from the pack the library holds now — so it may not match.</p><p>Convert that pack again to be sure, or send the existing instance if you know it is the one you want.</p><p>(The converted pack will be stored in the local library)</p>",
+        "convert": "Convert again",
+        "transfer": "Send the existing one",
+        "cancel": "Cancel"
       }
     },
     "settings": {

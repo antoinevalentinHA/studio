@@ -324,7 +324,10 @@
       },
       "askConfirmConversion": {
         "title": "Convertir le pack d'histoires ?",
-        "content": "<p>L'instance de ce pack d'histoires compatible avec l'appareil n'est pas à jour. Convertir la dernière instance ?</p><p>(Le pack converti sera conservé dans la bibliothèque locale)</p>"
+        "content": "<p>Une instance de ce pack d'histoires compatible avec l'appareil est déjà dans la bibliothèque, mais STUdio ne peut pas vérifier qu'elle a été produite à partir du pack que la bibliothèque contient aujourd'hui : elle peut donc ne pas correspondre.</p><p>Reconvertissez ce pack pour en être sûr, ou envoyez l'instance existante si vous savez que c'est celle que vous voulez.</p><p>(Le pack converti sera conservé dans la bibliothèque locale)</p>",
+        "convert": "Reconvertir",
+        "transfer": "Envoyer l'existante",
+        "cancel": "Annuler"
       }
     },
     "settings": {
