@@ -69,8 +69,11 @@ class TemporaryFilePackIndexWriter implements PackIndexWriter {
             LOGGER.warning("Refusing to write the pack index: a temporary file already exists at "
                     + temporary + ", and it was not created by this operation");
             throw new IOException("A pack index temporary file already exists on the device partition: "
-                    + temporary + ". It was not created by this operation, so it is neither overwritten"
-                    + " nor removed. Establish where it came from before removing it by hand.", preexisting);
+                    + temporary + ". It was not created by this operation, so the index write was refused"
+                    + " rather than taking it over: overwriting or removing it would risk an index whose"
+                    + " origin is not known, and the pack UUIDs it may hold exist nowhere else on the card."
+                    + " Nothing was overwritten or removed. STUdio has no operation to resolve this state"
+                    + " yet.", preexisting);
         }
 
         // From here the temporary is ours, and every path out of this method removes it.

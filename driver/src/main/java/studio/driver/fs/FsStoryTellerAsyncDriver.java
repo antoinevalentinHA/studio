@@ -544,9 +544,11 @@ public class FsStoryTellerAsyncDriver {
                         + folderName + ", and it was not created by this operation");
                 return CompletableFuture.failedFuture(new StoryTellerException(
                         "A pack content folder already exists on the device partition: " + folderName
-                                + ". It was not created by this operation, so it is neither written into,"
-                                + " merged with nor removed. Establish where it came from before removing"
-                                + " it by hand.", preexisting));
+                                + ". It was not created by this operation, so the upload was refused rather"
+                                + " than written into it: merging the pack into an existing or partial folder,"
+                                + " or emptying it, would risk content whose origin is not known. Nothing was"
+                                + " read, written or removed. STUdio has no operation to resolve this state"
+                                + " yet.", preexisting));
             }
             File destFolder = destFolderPath.toFile();
             // Copy folder with progress tracking
