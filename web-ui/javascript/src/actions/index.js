@@ -207,7 +207,12 @@ export const actionAddFromLibrary = (uuid, path, format, driver, context, t) => 
                             // Only a real request failure reaches this point: subscribing can no
                             // longer throw, so a dropped channel never lands here.
                             console.error('failed to add pack to device', e);
-                            toast.update(toastId, { type: toast.TYPE.ERROR, render: <IssueReportToast content={<>{t('toasts.device.addingFailed')}</>} error={e} />, autoClose: false });
+                            // showDetails, here and nowhere else for now: an upload can be refused for
+                            // a precise reason the driver spells out — a destination folder that was
+                            // already there, and that STUdio deliberately will not touch. That text
+                            // already arrived in the Error and used to go no further than a bug report,
+                            // leaving the user with "adding failed" and no idea why.
+                            toast.update(toastId, { type: toast.TYPE.ERROR, render: <IssueReportToast content={<>{t('toasts.device.addingFailed')}</>} error={e} showDetails />, autoClose: false });
                             // Always release the mutex
                             release();
                         });
