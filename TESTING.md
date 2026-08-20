@@ -75,7 +75,7 @@ Nothing here touches a device. Fixtures are synthesised in code; no device data 
 
 | Suite | Tests |
 | --- | --- |
-| Java, standard | **200**, 12 skipped — the opt-in FAT32 classes |
+| Java, standard | **201**, 12 skipped — the opt-in FAT32 classes |
 | Java, with `-Dstudio.test.fat32.root=<volume>` | last measured at **172** before the C6d-5 additions; not re-measured since, because it needs the volume mounted |
 | JavaScript | **50** |
 
@@ -112,6 +112,7 @@ counts.
 | libusb workers surviving transient failures, backoff, abort | `LibUsbWorkerResilienceTest` | covers the Windows polling path |
 | libusb context ownership, shared init, idempotent shutdown | `LibUsbLifecycleTest` | |
 | Nothing — proves Maven runs JUnit 5 for this module | `WebUiTestHarnessTest` | `web-ui` module; infrastructure only, asserts nothing about the application |
+| Nothing — proves Maven runs JUnit 5 for this module | `MetadataTestHarnessTest` | `metadata` module; infrastructure only, asserts nothing about the application. This module compiles to Java 8 |
 | When the library may reuse a parsed pack, and when it must re-read the file | `LibraryCacheCoherenceTest` | `web-ui` module; **specifications** — coherence on size and modification time, with the same-size/same-mtime case tested as a stated limit, not as a guarantee |
 
 Web UI (`web-ui/javascript`, run by yarn):
