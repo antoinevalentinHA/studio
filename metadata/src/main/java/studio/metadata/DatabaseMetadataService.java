@@ -39,7 +39,10 @@ public class DatabaseMetadataService {
                 LOGGER.fine("Reading and caching official metadata database");
                 // Read official metadata database file (path may be overridden by system property `studio.db.official`)
                 String databasePath = System.getProperty(OFFICIAL_DB_PROP, System.getProperty("user.home") + OFFICIAL_DB_JSON_PATH);
-                JsonObject officialRoot = new JsonParser().parse(new FileReader(databasePath)).getAsJsonObject();   // throws IllegalStateException
+                JsonObject officialRoot;
+                try (FileReader databaseReader = new FileReader(databasePath)) {
+                    officialRoot = new JsonParser().parse(databaseReader).getAsJsonObject();   // throws IllegalStateException
+                }
                 // Support newer file format which has an additional wrapper: { "code": "0.0", "response": { ...
                 final JsonObject packsRoot = (officialRoot.keySet().contains("response")) ? officialRoot.getAsJsonObject("response") : officialRoot;
                 if (packsRoot == null) {
@@ -54,6 +57,11 @@ public class DatabaseMetadataService {
             } catch (FileNotFoundException e) {
                 LOGGER.log(Level.WARNING, "Missing official metadata database file", e);
                 this.fetchOfficialDatabase();
+            } catch (IOException e) {
+                // Only reachable since the reader is closed: the read did not complete, so the
+                // cache was not populated, and the same fallback applies as for a missing file.
+                LOGGER.log(Level.WARNING, "Failed to read official metadata database file", e);
+                this.fetchOfficialDatabase();
             } catch (JsonParseException|IllegalStateException e) {
                 // Graceful failure on invalid file content
                 LOGGER.log(Level.WARNING, "Official metadata database file is invalid", e);
@@ -65,9 +73,9 @@ public class DatabaseMetadataService {
         File unofficialDatabase = new File(databasePath);
         if (!unofficialDatabase.exists() || !unofficialDatabase.isFile()) {
             try {
-                FileWriter fileWriter = new FileWriter(databasePath);
-                fileWriter.write("{}");
-                fileWriter.close();
+                try (FileWriter fileWriter = new FileWriter(databasePath)) {
+                    fileWriter.write("{}");
+                }
             } catch (IOException e) {
                 LOGGER.log(Level.SEVERE, "Failed to initialize unofficial metadata database", e);
                 throw new IllegalStateException("Failed to initialize unofficial metadata database");
@@ -114,7 +122,10 @@ public class DatabaseMetadataService {
         // Fetch from unofficial metadata database file (path may be overridden by system property `studio.db.unofficial`)
         try {
             String databasePath = System.getProperty(UNOFFICIAL_DB_PROP, System.getProperty("user.home") + UNOFFICIAL_DB_JSON_PATH);
-            JsonObject unofficialRoot = new JsonParser().parse(new FileReader(databasePath)).getAsJsonObject();
+            JsonObject unofficialRoot;
+            try (FileReader databaseReader = new FileReader(databasePath)) {
+                unofficialRoot = new JsonParser().parse(databaseReader).getAsJsonObject();
+            }
             if (unofficialRoot.has(uuid)) {
                 JsonObject packMetadata = unofficialRoot.getAsJsonObject(uuid);
                 return Optional.of(new DatabasePackMetadata(
@@ -127,6 +138,10 @@ public class DatabaseMetadataService {
             }
         } catch (FileNotFoundException e) {
             LOGGER.log(Level.SEVERE, "Missing unofficial metadata database file", e);
+        } catch (IOException e) {
+            // Only reachable since the reader is closed: the read did not complete, so there is no
+            // metadata to return, exactly as when the file is missing.
+            LOGGER.log(Level.SEVERE, "Failed to read unofficial metadata database file", e);
         }
 
         // Missing metadata
@@ -163,12 +178,13 @@ public class DatabaseMetadataService {
             if (tokenStatusCode == 200) {
                 // OK, read response body
                 InputStream inputStream = tokenConnection.getInputStream();
-                BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
-                // Extract token from response body
                 JsonParser parser = new JsonParser();
-                JsonObject tokenJson = parser.parse(new JsonReader(bufferedReader)).getAsJsonObject();
-                String token = tokenJson.getAsJsonObject("response").getAsJsonObject("token").get("server").getAsString();
-                bufferedReader.close();
+                String token;
+                try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+                    // Extract token from response body
+                    JsonObject tokenJson = parser.parse(new JsonReader(bufferedReader)).getAsJsonObject();
+                    token = tokenJson.getAsJsonObject("response").getAsJsonObject("token").get("server").getAsString();
+                }
                 LOGGER.fine("Guest token: " + token);
 
                 // Call service to fetch metadata for all packs
@@ -183,11 +199,12 @@ public class DatabaseMetadataService {
                 if (statusCode == 200) {
                     // OK, read response body
                     inputStream = connection.getInputStream();
-                    bufferedReader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
-                    // Extract metadata database from response body
-                    JsonObject json = parser.parse(new JsonReader(bufferedReader)).getAsJsonObject();
-                    JsonObject response = json.get("response").getAsJsonObject();
-                    bufferedReader.close();
+                    JsonObject response;
+                    try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+                        // Extract metadata database from response body
+                        JsonObject json = parser.parse(new JsonReader(bufferedReader)).getAsJsonObject();
+                        response = json.get("response").getAsJsonObject();
+                    }
 
                     // Try and update official database
                     LOGGER.info("Fetched metadata, updating local database");
@@ -212,7 +229,10 @@ public class DatabaseMetadataService {
         try {
             // Open database file
             String databasePath = System.getProperty(UNOFFICIAL_DB_PROP, System.getProperty("user.home") + UNOFFICIAL_DB_JSON_PATH);
-            JsonObject unofficialRoot = new JsonParser().parse(new FileReader(databasePath)).getAsJsonObject();
+            JsonObject unofficialRoot;
+            try (FileReader databaseReader = new FileReader(databasePath)) {
+                unofficialRoot = new JsonParser().parse(databaseReader).getAsJsonObject();
+            }
 
             // Replace or add pack metadata
             JsonObject value = new JsonObject();
@@ -242,7 +262,10 @@ public class DatabaseMetadataService {
         // Remove official packs from unofficial metadata database file
         try {
             String databasePath = System.getProperty(UNOFFICIAL_DB_PROP, System.getProperty("user.home") + UNOFFICIAL_DB_JSON_PATH);
-            JsonObject unofficialRoot = new JsonParser().parse(new FileReader(databasePath)).getAsJsonObject();
+            JsonObject unofficialRoot;
+            try (FileReader databaseReader = new FileReader(databasePath)) {
+                unofficialRoot = new JsonParser().parse(databaseReader).getAsJsonObject();
+            }
             List<String> toClean = new ArrayList<>();
             for (String uuid : unofficialRoot.keySet()) {
                 if (this.isOfficialPack(uuid)) {
@@ -267,9 +290,9 @@ public class DatabaseMetadataService {
                 .setPrettyPrinting()
                 .create();
         String jsonString = gson.toJson(json);
-        FileWriter fileWriter = new FileWriter(databasePath);
-        fileWriter.write(jsonString);
-        fileWriter.close();
+        try (FileWriter fileWriter = new FileWriter(databasePath)) {
+            fileWriter.write(jsonString);
+        }
     }
 
 }
