@@ -88,7 +88,7 @@ class ConversionProvenanceStoreTest {
         ConversionRecord written = new ConversionRecord("Cornebidouille.zip",
                 ConversionRecord.Kind.FILE, "a".repeat(64),
                 ConversionRecord.Kind.TREE, "b".repeat(64), 123456789L, 1_700_000_000_000L,
-                "fs", 1);
+                "fs", "0.4.3-TEST");
 
         assertTrue(store.record("u.converted_1", written));
 
@@ -101,7 +101,7 @@ class ConversionProvenanceStoreTest {
         assertEquals(123456789L, read.getArtifactSize());
         assertEquals(1_700_000_000_000L, read.getArtifactLastModified());
         assertEquals("fs", read.getTargetFormat());
-        assertEquals(1, read.getConverterVersion());
+        assertEquals("0.4.3-TEST", read.getConverterVersion());
     }
 
     @Test
@@ -211,7 +211,7 @@ class ConversionProvenanceStoreTest {
 
     private static ConversionRecord record(String sourceName, String sourceDigest) {
         return new ConversionRecord(sourceName, ConversionRecord.Kind.FILE, sourceDigest,
-                ConversionRecord.Kind.TREE, "artifact", 1L, 2L, "fs", 1);
+                ConversionRecord.Kind.TREE, "artifact", 1L, 2L, "fs", "0.4.3-TEST");
     }
 
     private static ConversionRecord require(Optional<ConversionRecord> record) {
