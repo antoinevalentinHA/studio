@@ -28,7 +28,8 @@ import Modal from "./Modal";
 import {
     LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT
 } from "../utils/storage";
-import {chooseDropAction} from "../utils/packs";
+import {chooseDropAction, applyProvenanceVerdict} from "../utils/packs";
+import {verifyConversion} from "../services/library";
 
 import './PackLibrary.css';
 
@@ -92,7 +93,8 @@ class PackLibrary extends React.Component {
         // Which artefact goes to the device is decided in utils/packs. It compares no timestamps and
         // selects on more than format: nothing records which source a conversion output came from,
         // and a conversion output can itself be archive, raw or fs.
-        const {action, source, cached} = chooseDropAction(data.packs, driverFormat);
+        const decision = chooseDropAction(data.packs, driverFormat);
+        const {action, source, cached} = decision;
         console.log('drop action: %s (source: %o, cached: %o)', action, source, cached);
 
         if (action === 'none') {
@@ -129,14 +131,35 @@ class PackLibrary extends React.Component {
         }
 
         // A device-compatible pack exists, and so does a candidate that could be converted into one.
-        // Whether they correspond cannot be established here, so the choice is the user's.
-        console.log('cannot establish that the compatible pack matches the source candidate. asking.');
-        this.setState({
-            confirmConversionDialog: {
-                show: true,
-                data: { pack: {...source, format: driverFormat}, format: driverFormat, cached }
-            }
-        });
+        // The backend is the only thing that can say whether they correspond: it holds what was
+        // recorded when the conversion was made, and it reads both artefacts to compare. A verdict
+        // it cannot give, for any reason at all, leaves the choice with the user.
+        this.props.verifyConversion(source.path, cached.path)
+            .then(response => response && response.verdict)
+            .catch(e => {
+                console.error('could not verify the conversion, asking rather than assuming', e);
+                return undefined;
+            })
+            .then(verdict => {
+                const verified = applyProvenanceVerdict(decision, verdict);
+                if (verified.action === 'transfer') {
+                    console.log('conversion proven to match the source, transferring: %o', cached);
+                    this.doAddToDevice(cached, cached.path);
+                    return;
+                }
+                console.log('conversion not proven (%s), asking', verified.verdict);
+                this.setState({
+                    confirmConversionDialog: {
+                        show: true,
+                        data: {
+                            pack: {...source, format: driverFormat},
+                            format: driverFormat,
+                            cached,
+                            verdict: verified.verdict
+                        }
+                    }
+                });
+            });
     };
 
     doAddToDevice = (data, path) => {
@@ -399,7 +422,9 @@ class PackLibrary extends React.Component {
                 {this.state.confirmConversionDialog.show &&
                 <Modal id="ask-confirm-conversion"
                        title={t('dialogs.library.askConfirmConversion.title')}
-                       content={<div dangerouslySetInnerHTML={{__html: t('dialogs.library.askConfirmConversion.content')}} ></div>}
+                       content={<div dangerouslySetInnerHTML={{__html: t(this.state.confirmConversionDialog.data.verdict === 'MISMATCH'
+                           ? 'dialogs.library.askConfirmConversion.contentMismatch'
+                           : 'dialogs.library.askConfirmConversion.content')}} ></div>}
                        buttons={[
                            { label: t('dialogs.library.askConfirmConversion.cancel'), onClick: this.dismissConfirmConversionDialog('cancel')},
                            { label: t('dialogs.library.askConfirmConversion.transfer'), onClick: this.dismissConfirmConversionDialog('transfer')},
@@ -605,6 +630,7 @@ const mapDispatchToProps = (dispatch, ownProps) => ({
     convertPackInLibrary: (uuid, path, format, allowEnriched, context) => dispatch(actionConvertInLibrary(uuid, path, format, allowEnriched, context, ownProps.t)),
     removeFromLibrary: (path) => dispatch(actionRemoveFromLibrary(path, ownProps.t)),
     uploadPackToLibrary: (path, packData) => dispatch(actionUploadToLibrary(null, path, packData, ownProps.t)),
+    verifyConversion: (sourcePath, convertedPath) => verifyConversion(sourcePath, convertedPath),
     createPackInEditor: () => dispatch(actionCreatePackInEditor(ownProps.t)),
     loadSampleInEditor: () => dispatch(actionLoadSampleInEditor(ownProps.t)),
     setAllowEnriched: (allowEnriched) => dispatch(setAllowEnriched(allowEnriched))

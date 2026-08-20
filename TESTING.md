@@ -75,9 +75,9 @@ Nothing here touches a device. Fixtures are synthesised in code; no device data 
 
 | Suite | Tests |
 | --- | --- |
-| Java, standard | **248**, 13 skipped — the opt-in FAT32 classes, and one link case that only Linux can set up |
+| Java, standard | **261**, 13 skipped — the opt-in FAT32 classes, and one link case that only Linux can set up |
 | Java, with `-Dstudio.test.fat32.root=<volume>` | last measured at **172** before the C6d-5 additions; not re-measured since, because it needs the volume mounted |
-| JavaScript | **50** |
+| JavaScript | **57** |
 
 On Linux the Java totals are the same with a higher skip count, because the Windows-only cases are
 skipped rather than absent.
@@ -117,7 +117,8 @@ counts.
 | When the library may reuse a parsed pack, and when it must re-read the file | `LibraryCacheCoherenceTest` | `web-ui` module; **specifications** — coherence on size and modification time, with the same-size/same-mtime case tested as a stated limit, not as a guarantee |
 | What identifies a pack artefact: file digest, canonical tree digest, refusal of unstable reads and of links | `ContentDigestTest` | `web-ui` module; **specifications** — pins the canonical form itself. The junction case is Windows-only, the symbolic-link case Linux-only: neither platform can set up both |
 | The provenance ledger: round trip, schema version, and refusal to overwrite a ledger it cannot read | `ConversionProvenanceStoreTest` | `web-ui` module; **specifications** |
-| What each of the six conversions records about itself, and every reason it records nothing | `ConversionProvenanceTest` | `web-ui` module; **specifications** — provenance is written, never read: no transfer decision consults it yet |
+| What each of the six conversions records about itself, and every reason it records nothing | `ConversionProvenanceTest` | `web-ui` module; **specifications** |
+| When a conversion is proven to match its source, and every reason it is not | `ConversionVerificationTest` | `web-ui` module; **specifications** — only MATCH removes a confirmation; a path outside the library is refused rather than answered |
 
 Web UI (`web-ui/javascript`, run by yarn):
 
@@ -125,7 +126,7 @@ Web UI (`web-ui/javascript`, run by yarn):
 | --- | --- | --- |
 | Event bus channel: subscribe while closed, reconnect, no duplicate handlers | `src/services/eventBusChannel.test.js` | drives the real `vertx3-eventbus-client` over a fake SockJS transport |
 | Transfer tracking: a lost channel is not a failed transfer | `src/actions/addFromLibrary.test.js` | |
-| Which artefact a drop sends to the device, and when the user is asked | `src/utils/packs.test.js` | the decision is a pure function; the component is not rendered |
+| Which artefact a drop sends to the device, when the user is asked, and what a provenance verdict may change | `src/utils/packs.test.js` | the decisions are pure functions; the component is not rendered, so the wiring itself is covered by the Java side |
 
 ## Windows filesystem findings
 

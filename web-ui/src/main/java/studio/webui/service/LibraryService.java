@@ -441,6 +441,76 @@ public class LibraryService {
     }
 
     /**
+     * Whether a converted pack can stand in for a source without asking the user.
+     *
+     * <p>Called when a pack is dropped on a device and never while listing, because it reads both
+     * artefacts in full. Both digests are recomputed here, every time. Neither the size nor the
+     * modification time is allowed to stand in for that: C7-0b established they do not identify
+     * content, which is fine for deciding whether to re-parse a file and not fine at all for
+     * deciding to send bytes to a device without telling anyone.
+     *
+     * @throws IllegalArgumentException if either name does not denote a direct child of the library
+     *                                  folder. That is a malformed request, not an uncertainty.
+     */
+    public ProvenanceVerdict verifyConversion(String sourcePath, String convertedPath) {
+        Path source = requireLibraryEntry(sourcePath);
+        Path converted = requireLibraryEntry(convertedPath);
+        try {
+            Optional<ConversionRecord> recorded = provenanceStore.find(converted.getFileName().toString());
+            if (!recorded.isPresent()) {
+                // No ledger, an unreadable one, or a conversion made before any of this existed.
+                // None of those is a statement that the artefacts differ.
+                return ProvenanceVerdict.UNKNOWN;
+            }
+            Optional<String> currentSource = sourceIdentity(sourcePath);
+            Optional<String> currentArtifact = identityOf(converted);
+            if (!currentSource.isPresent() || !currentArtifact.isPresent()) {
+                // Missing, unreadable, or moving while being read. Nothing was established.
+                return ProvenanceVerdict.UNKNOWN;
+            }
+            boolean sameSource = currentSource.get().equals(recorded.get().getSourceSha256());
+            boolean sameArtifact = currentArtifact.get().equals(recorded.get().getArtifactSha256());
+            return sameSource && sameArtifact ? ProvenanceVerdict.MATCH : ProvenanceVerdict.MISMATCH;
+        } catch (RuntimeException e) {
+            // An unexpected failure is an absence of knowledge, never a proof.
+            LOGGER.error("Failed to verify the provenance of `" + convertedPath + "`", e);
+            return ProvenanceVerdict.UNKNOWN;
+        }
+    }
+
+    /** The identity of a library artefact, read as a file or as a tree according to its name. */
+    private Optional<String> identityOf(Path artifact) {
+        return kindOf(artifact.getFileName().toString()) == ConversionRecord.Kind.FILE
+                ? contentDigest.ofFile(artifact)
+                : contentDigest.ofTree(artifact);
+    }
+
+    /**
+     * Resolves a name the client supplied against the library, refusing anything that is not a
+     * direct child of it.
+     *
+     * <p>Uncertainty about two packs is a verdict; being asked about a file somewhere else on the
+     * disk is not a question this is willing to answer. Without this, the two names below would let
+     * a caller point the digests at arbitrary paths, and a verification endpoint would become a way
+     * to probe the filesystem. The listing only ever offers names from one directory, so requiring
+     * exactly that costs nothing legitimate.
+     *
+     * @throws IllegalArgumentException if the name is empty, or escapes the library folder, or names
+     *                                  something nested inside it
+     */
+    private Path requireLibraryEntry(String name) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("A library entry name is required");
+        }
+        Path libraryRoot = Paths.get(libraryPath()).toAbsolutePath().normalize();
+        Path resolved = libraryRoot.resolve(name).toAbsolutePath().normalize();
+        if (!libraryRoot.equals(resolved.getParent())) {
+            throw new IllegalArgumentException("Not an entry of the local library: " + name);
+        }
+        return resolved;
+    }
+
+    /**
      * The content identity of a library artefact used as a conversion source.
      *
      * <p>Package-private and overridable so a test can make the source change between the two

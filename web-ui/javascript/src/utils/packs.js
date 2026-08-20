@@ -115,3 +115,31 @@ export function chooseDropAction(packs, driverFormat) {
     // reflects what the user means to send cannot be established here, so the choice is theirs.
     return { action: 'confirm', source: sourceCandidate, cached };
 }
+
+/*
+ * The one verdict that is allowed to skip the confirmation.
+ *
+ * `chooseDropAction` decides that a question exists; this decides whether the backend has answered
+ * it. Only the exact string `MATCH` may turn the question into a transfer, and it means the backend
+ * read both artefacts just now and found both digests equal to the ones recorded when the conversion
+ * was made. Nothing weaker qualifies: not a name, not a timestamp, not a size, and not the absence
+ * of evidence to the contrary.
+ *
+ * Everything else keeps the confirmation, and that includes cases nobody planned for — a request
+ * that failed, a verdict that arrives empty, a value from some future version this build does not
+ * recognise. They are all reported as `UNKNOWN`, which is what they are. The alternative, defaulting
+ * to reuse when the answer is unclear, is precisely the behaviour this line of work removed.
+ *
+ * `MISMATCH` and `UNKNOWN` both keep the dialog, and are still distinguished: one is something
+ * STUdio established, the other is something it could not, and the dialog says which.
+ */
+export function applyProvenanceVerdict(decision, verdict) {
+    if (!decision || decision.action !== 'confirm') {
+        // A verdict is only ever sought when there is something to confirm.
+        return decision;
+    }
+    if (verdict === 'MATCH') {
+        return { ...decision, action: 'transfer', verdict: 'MATCH' };
+    }
+    return { ...decision, verdict: verdict === 'MISMATCH' ? 'MISMATCH' : 'UNKNOWN' };
+}
