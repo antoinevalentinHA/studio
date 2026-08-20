@@ -24,6 +24,16 @@
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
         </dependency>
+
+        <!-- Test scope only: not part of any runtime or distributed classpath. Version comes from
+             the junit-bom imported by the parent, and surefire is already pinned there and already
+             bound to this module — only the dependency was missing. This module compiles to Java 8
+             rather than 11, which JUnit 5.10 supports. -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
