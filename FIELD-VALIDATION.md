@@ -183,11 +183,15 @@ read back off the card.
 
 ### Operations exercised
 
+Packs are designated neutrally. They were personal packs holding third-party content, and which work
+each one carried is not part of the evidence; the operation, the identity relation between rows and
+the counts are.
+
 | Operation | Pack | Index count | Outcome |
 | --- | --- | --- | --- |
-| Add | Lucky Luke | 30 → 31 | completed |
-| Replace, same UUID | Cornebidouille | 31 → 30 → 31 | completed |
-| Replace, same UUID | Dans la classe | 31 → 30 → 31 | completed, after the separate finding below |
+| Add | personal pack 1 | 30 → 31 | completed |
+| Replace, same UUID | personal pack 2 | 31 → 30 → 31 | completed |
+| Replace, same UUID | personal pack 3 | 31 → 30 → 31 | completed, after the separate finding below |
 
 A same-UUID replacement is **one of the more demanding normal write-path scenarios**: the existing
 entry and content are removed, then a pack of the same identity is written back. Mishandled, it is
@@ -252,9 +256,14 @@ Three adds. No deletions, no replacements.
 
 | Device | Pack | UUID suffix | Index count | Outcome |
 | --- | --- | --- | --- | --- |
-| **B** | Cornebidouille - Musique | `fea112e9` | 5 → 6 | completed |
-| **A** | Cornebidouille - Musique | `fea112e9` | 31 → 32 | completed |
-| **A** | Lucky Luke contre les Daltons | `3d75e924` | 32 → 33 | completed |
+| **B** | multi-track custom pack | `fea112e9` | 5 → 6 | completed |
+| **A** | multi-track custom pack | `fea112e9` | 31 → 32 | completed |
+| **A** | personal pack 4 | `3d75e924` | 32 → 33 | completed |
+
+Neutral designations again, and the UUID suffixes carry what matters here: the first two rows are the
+**same pack** sent to two devices, which is what the reuse observation below rests on, and the third
+is a different one. These are locally authored packs, so the identifiers are STUdio's own and resolve
+to nothing outside this repository.
 
 Final state: device A at 33 packs, device B at 6.
 
@@ -271,8 +280,8 @@ It says nothing about operations that were not performed.
 
 ### An additional pack topology
 
-One of the packs used a graph shape the earlier sessions had not produced: a single action node
-holding every track, each track carrying `autoJumpEnabled` and an OK transition to the next, so that
+The multi-track custom pack used a graph shape the earlier sessions had not produced: a single action
+node holding every track, each track carrying `autoJumpEnabled` and an OK transition to the next, so that
 autoplay and the OK button follow the same edge; the last track returns to a cover node rather than
 looping. It passed STUdio's own *Verify* with no error and played correctly on both devices.
 
