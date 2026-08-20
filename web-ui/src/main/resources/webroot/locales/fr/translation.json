@@ -325,6 +325,7 @@
       "askConfirmConversion": {
         "title": "Convertir le pack d'histoires ?",
         "content": "<p>Une instance de ce pack d'histoires compatible avec l'appareil est déjà dans la bibliothèque, mais STUdio ne peut pas vérifier qu'elle a été produite à partir du pack que la bibliothèque contient aujourd'hui : elle peut donc ne pas correspondre.</p><p>Reconvertissez ce pack pour en être sûr, ou envoyez l'instance existante si vous savez que c'est celle que vous voulez.</p><p>(Le pack converti sera conservé dans la bibliothèque locale)</p>",
+        "contentMismatch": "<p>Une instance de ce pack d'histoires compatible avec l'appareil est déjà dans la bibliothèque, mais STUdio l'a vérifiée : elle n'a pas été produite à partir du pack que la bibliothèque contient aujourd'hui, elle n'enverrait donc pas ce que vous avez.</p><p>Reconvertissez ce pack, ou envoyez quand même l'instance existante si c'est ce que vous voulez.</p><p>(Le pack converti sera conservé dans la bibliothèque locale)</p>",
         "convert": "Reconvertir",
         "transfer": "Envoyer l'existante",
         "cancel": "Annuler"

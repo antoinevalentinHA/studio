@@ -26,7 +26,7 @@
  * rendering stack and this lot does not add one.
  */
 
-const { chooseDropAction, isConversionOutput } = require('./packs');
+const { chooseDropAction, isConversionOutput, applyProvenanceVerdict } = require('./packs');
 
 // The library lists a pack's artefacts most-recent-first; these fixtures keep that order, and carry
 // the file names the backend actually sends.
@@ -210,5 +210,79 @@ describe('chooseDropAction', () => {
             expect(chooseDropAction(undefined, 'fs').action).toBe('none');
             expect(chooseDropAction(null, 'fs').action).toBe('none');
         });
+    });
+});
+
+/*
+ * What a provenance verdict is allowed to change.
+ *
+ * C7-1 decided when to ask; this decides when the answer lets the question be skipped. Exactly one
+ * value does: the string MATCH, meaning the backend read both artefacts and found both digests equal
+ * to the ones recorded when the conversion was made. Everything else — a mismatch it established, an
+ * absence of proof, a request that failed, a value nobody expected — keeps the confirmation.
+ *
+ * That asymmetry is the point, and it is why the tests below spend more effort on what must NOT
+ * silence the dialog than on what may.
+ */
+describe('applyProvenanceVerdict', () => {
+
+    const confirmDecision = () => ({
+        action: 'confirm',
+        source: { path: 'u.zip', format: 'archive' },
+        cached: { path: 'u.converted_3000', format: 'fs' }
+    });
+
+    it('MATCH sends the proven conversion without asking', () => {
+        const decided = applyProvenanceVerdict(confirmDecision(), 'MATCH');
+
+        expect(decided.action).toBe('transfer');
+        expect(decided.cached.path).toBe('u.converted_3000');
+    });
+
+    it('MISMATCH keeps the confirmation and says which of the two it is', () => {
+        const decided = applyProvenanceVerdict(confirmDecision(), 'MISMATCH');
+
+        expect(decided.action).toBe('confirm');
+        expect(decided.verdict).toBe('MISMATCH');
+    });
+
+    it('UNKNOWN keeps the confirmation', () => {
+        const decided = applyProvenanceVerdict(confirmDecision(), 'UNKNOWN');
+
+        expect(decided.action).toBe('confirm');
+        expect(decided.verdict).toBe('UNKNOWN');
+    });
+
+    it('a legacy conversion, which the backend cannot place, keeps the confirmation', () => {
+        // Every conversion made before provenance was recorded arrives here as UNKNOWN. There are
+        // libraries full of them, and none of them may be sent without asking.
+        expect(applyProvenanceVerdict(confirmDecision(), 'UNKNOWN').action).toBe('confirm');
+    });
+
+    it('a failed verification keeps the confirmation rather than assuming anything', () => {
+        // What the caller passes when the request itself failed. A backend that cannot answer must
+        // never be read as a backend that said yes.
+        expect(applyProvenanceVerdict(confirmDecision(), undefined).action).toBe('confirm');
+        expect(applyProvenanceVerdict(confirmDecision(), null).action).toBe('confirm');
+    });
+
+    it('an unrecognised verdict is treated as no proof at all', () => {
+        // Defensive on purpose: only the exact string MATCH may remove the question, so a renamed
+        // or mistyped verdict fails towards asking rather than towards sending.
+        expect(applyProvenanceVerdict(confirmDecision(), 'match').action).toBe('confirm');
+        expect(applyProvenanceVerdict(confirmDecision(), 'PROVEN').action).toBe('confirm');
+        expect(applyProvenanceVerdict(confirmDecision(), '').verdict).toBe('UNKNOWN');
+    });
+
+    it('leaves every other decision exactly as C7-1 made it', () => {
+        // A verdict is only ever sought when there is something to confirm; the other actions are
+        // not the backend's business.
+        const convert = { action: 'convert', source: { path: 'u.zip' }, cached: undefined };
+        const transfer = { action: 'transfer', source: undefined, cached: { path: 'u.converted_1' } };
+        const none = { action: 'none' };
+
+        expect(applyProvenanceVerdict(convert, 'MATCH')).toBe(convert);
+        expect(applyProvenanceVerdict(transfer, 'MISMATCH')).toBe(transfer);
+        expect(applyProvenanceVerdict(none, 'UNKNOWN')).toBe(none);
     });
 });

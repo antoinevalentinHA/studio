@@ -16,6 +16,7 @@ import io.vertx.core.logging.LoggerFactory;
 import io.vertx.ext.web.Router;
 import studio.core.v1.Constants;
 import studio.webui.service.LibraryService;
+import studio.webui.service.ProvenanceVerdict;
 
 import java.nio.file.Path;
 import java.util.Timer;
@@ -136,6 +137,26 @@ public class LibraryController {
                     ctx.fail(500, maybeConvertedPack.cause());
                 }
             });
+        });
+
+        // Whether a converted pack still corresponds to the source it was made from. Only ever
+        // asked when a pack is dropped on a device, never while listing: it reads both artefacts.
+        // The answer is a verdict and nothing else — no digest, no record, no path — because the
+        // client has no use for them and no business deciding this for itself.
+        router.post("/verify-conversion").blockingHandler(ctx -> {
+            String sourcePath = ctx.getBodyAsJson().getString("sourcePath");
+            String convertedPath = ctx.getBodyAsJson().getString("convertedPath");
+            try {
+                ProvenanceVerdict verdict = libraryService.verifyConversion(sourcePath, convertedPath);
+                ctx.response()
+                        .putHeader("content-type", "application/json")
+                        .end(Json.encode(new JsonObject().put("verdict", verdict.name())));
+            } catch (IllegalArgumentException e) {
+                // Naming something outside the library is a malformed request, not an uncertainty.
+                // Answering UNKNOWN here would quietly accept a question that should be refused.
+                LOGGER.error("Refused a conversion verification request", e);
+                ctx.fail(400, e);
+            }
         });
 
         // Remove pack from device

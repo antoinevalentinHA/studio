@@ -60,3 +60,19 @@ export const removeFromLibrary = (path) => {
     })
         .then(handleJsonOrError);
 };
+
+/*
+ * Whether a converted pack still corresponds to the source it was made from.
+ *
+ * Asked only when a pack is dropped on a device, never while listing: the backend reads both
+ * artefacts in full to answer. It returns a verdict and nothing else — no digest, no record — so
+ * this side has nothing to decide and nothing to get wrong.
+ */
+export const verifyConversion = async (sourcePath, convertedPath) => {
+    return await fetch('http://localhost:8080/api/library/verify-conversion', {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({sourcePath, convertedPath})
+    })
+        .then(handleJsonOrError);
+};
