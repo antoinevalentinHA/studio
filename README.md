@@ -39,13 +39,28 @@ history.
 - The temporary is synchronised, then installed with a single `Files.move(ATOMIC_MOVE)`, so the index
   is no longer written through in place. If the atomic move is unsupported the operation fails —
   there is deliberately no fallback to the previous non-atomic copy.
+- An upload creates its `.content` folder exclusively. A folder already at that name is **refused,
+  never written into and never emptied**: it may be the residue of an interrupted upload, of a delete
+  that could not finish, or of another tool, and nothing can tell which. The refusal reads nothing,
+  writes nothing and removes nothing.
+
+**Library and conversions**
+
+- A converted file is no longer sent to the device merely because it is the most recent one present.
+  When the library holds both something the device can read and something that could be converted
+  into it, STUdio asks which one you mean — unless it can prove they correspond.
+- New conversions record what they were made from. Before reusing one, STUdio re-reads both the
+  source and the converted file and compares them against what it recorded: only a match transfers
+  without asking. A difference, or anything it cannot establish, asks.
+- Conversions made before this existed carry no such record, so they are never assumed to match. They
+  ask, once, and re-converting produces one that no longer will.
 
 **Testing**
 
 - A CI workflow running the Java suite on Linux and Windows, plus the JavaScript suite.
 - Characterization and specification tests covering the metadata, index, detection and write paths.
 - An opt-in FAT32 suite, exercised by hand on a disposable volume — see `TESTING.md`.
-- One documented session of real device operations — see `FIELD-VALIDATION.md`.
+- Three documented sessions of real device operations, on two devices — see `FIELD-VALIDATION.md`.
 
 ## Current status
 
@@ -53,10 +68,13 @@ Actively worked on, and **not finished**. What is described above is implemented
 conditions documented in `TESTING.md`. What is still open, and known to be:
 
 - an upload that fails part-way leaves an orphan `.content` folder that nothing cleans up;
-- retrying that upload has no defined semantics — it fails on the clear-text files;
+- that orphan then makes every later upload of the same pack **refuse**, which is deliberate and
+  explained in the error — but STUdio still offers no supported way to resolve the state it leaves;
 - `deletePack` removes the index entry before the content, so a failed removal leaves the content
   behind, de-indexed;
-- nothing detects or reports partial states on a device at connection time.
+- the driver can list `.content` folders the index does not reference, but nothing calls it: a
+  device is not examined for partial states when it is plugged in, and the web UI never shows them.
+  Nothing acts on them either — the listing is read-only by design.
 
 Use the operational protocol in `FIELD-VALIDATION.md` if you are writing to a real device.
 
@@ -73,24 +91,37 @@ Use the operational protocol in `FIELD-VALIDATION.md` if you are writing to a re
 
 ## Testing
 
-At the time of writing: **164 Java tests** in the standard suite, **172** with the opt-in FAT32 suite
-enabled, **23 JavaScript tests**. All green.
+At the time of writing: **282 Java tests** in the standard suite and **57 JavaScript tests**, all
+green, on Linux and on Windows. `TESTING.md` holds the current counts, the opt-in FAT32 figure and
+its caveats, and is the authority — the numbers here will go stale before it does.
 
-Two caveats worth knowing before reading anything into those numbers:
+Two caveats worth knowing before reading anything into any of those numbers:
 
 - **CI never exercises FAT32.** A hosted runner has no such volume, so the opt-in tests skip there
   and are validated by hand on a disposable VHD instead.
-- Field results come from one session, one machine, two devices. They do not generalise to other
+- Field results come from three sessions, one machine, two devices. They do not generalise to other
   firmware revisions, other cards or other Windows versions.
 
 `TESTING.md` describes how to run everything, what is covered, and what is deliberately not.
 
 ## Getting started
 
-There is **no dedicated release for this fork yet**. The download link in the upstream instructions
-below points at upstream's own build, which does **not** contain any of the changes described here.
-Using this fork means building it — the *For developers* section below still applies, and
-`mvn clean install` produces the distribution archive in `web-ui/target/`.
+There is **no release, and no tag, for this fork yet**. The download link in the upstream
+instructions below points at upstream's own build, which does **not** contain any of the changes
+described here.
+
+**Building from source is the only way to run this fork today.** The upstream prerequisites apply
+unchanged — Java JDK 11+ to run it, Maven 3+ to build it — but clone **this** repository rather than
+the one named in *For developers*:
+
+```
+git clone https://github.com/antoinevalentinHA/studio.git
+cd studio
+mvn clean install
+```
+
+That produces the distribution archive in `web-ui/target/`; unzip it and run the launcher script for
+your platform, as the upstream instructions describe.
 
 Packaging a release for the fork has not been decided.
 
@@ -103,8 +134,10 @@ maintained here.
 
 ---
 
-The rest of this file is the upstream README. Two links have been relabelled so that it is clear
-they point at upstream builds rather than at this fork; nothing else in it is changed.
+The rest of this file is the upstream README, kept as it was except where it would say something
+untrue of this fork. What is annotated: the release badge and the download link, which refer to
+upstream builds; the clone URL, which is upstream's repository and not this one; and the rule
+deciding which file is transferred, which this fork changed. Nothing else in it is edited.
 
 ---
 
@@ -178,6 +211,11 @@ The pack library screen always shows the story packs in your local library. Thes
 Variations of a given story pack are grouped together in the UI for better readability. **The most recent file**
 (highlighted in the UI) gets transferred to the device.
 
+*This fork changed that rule.* Recency no longer decides: when the library holds both a file the
+device can read and something that could be converted into one, this fork asks which you mean,
+unless it can prove the first was produced from the second. See
+[What this fork changes](#what-this-fork-changes).
+
 When the device is plugged, **another pane will appear on the left side**, showing the device metadata and story packs.
 **Dragging and dropping** a pack from or to the device will initiate the transfer.
 
@@ -230,6 +268,8 @@ FOR DEVELOPERS
 ### Building the application
 
 * Clone this repository: `git clone https://github.com/marian-m12l/studio.git`
+— that is **upstream's** repository; to build this fork clone
+`https://github.com/antoinevalentinHA/studio.git` instead, see [Getting started](#getting-started)
 * Build the application: `mvn clean install`
 
 This will produce the **distribution archive** in `web-ui/target/`.
