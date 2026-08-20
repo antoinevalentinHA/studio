@@ -31,6 +31,9 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -40,6 +43,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -201,7 +205,8 @@ public class LibraryService {
     }
 
     public Optional<File> getRawPackFile(String packPath) {
-        return Optional.of(new File(libraryPath() + packPath));
+        // Only ever a direct library entry: whatever this returns is sent straight to the client.
+        return libraryEntry(packPath).map(Path::toFile);
     }
 
     public Optional<Path> addConvertedRawPackFile(String packPath, Boolean allowEnriched) {
@@ -217,7 +222,7 @@ public class LibraryService {
 
                 LOGGER.info("Reading archive format pack");
                 ArchiveStoryPackReader packReader = new ArchiveStoryPackReader();
-                FileInputStream fis = new FileInputStream(libraryPath() + packPath);
+                FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile());
                 StoryPack storyPack = packReader.read(fis);
                 fis.close();
 
@@ -234,8 +239,8 @@ public class LibraryService {
                 packWriter.write(uncompressedPack, fos, allowEnriched);
                 fos.close();
 
-                String destinationFileName = storyPack.getUuid() + ".converted_" + System.currentTimeMillis() + ".pack";
-                Path destinationPath = Paths.get(libraryPath() + destinationFileName);
+                String destinationFileName = requirePackUuid(storyPack.getUuid()) + ".converted_" + System.currentTimeMillis() + ".pack";
+                Path destinationPath = requireLibraryEntry(destinationFileName);
                 LOGGER.info("Moving raw format pack into local library: " + destinationPath);
                 Files.move(tmp.toPath(), destinationPath);
                 recordProvenance(packPath, sourceBefore, destinationPath, "raw");
@@ -259,7 +264,7 @@ public class LibraryService {
 
                 LOGGER.info("Reading FS format pack");
                 FsStoryPackReader packReader = new FsStoryPackReader();
-                StoryPack storyPack = packReader.read(Paths.get(libraryPath() + packPath));
+                StoryPack storyPack = packReader.read(requireLibraryEntry(packPath));
 
                 // Uncompress pack assets
                 StoryPack uncompressedPack = storyPack;
@@ -274,8 +279,8 @@ public class LibraryService {
                 packWriter.write(uncompressedPack, fos, allowEnriched);
                 fos.close();
 
-                String destinationFileName = storyPack.getUuid() + ".converted_" + System.currentTimeMillis() + ".pack";
-                Path destinationPath = Paths.get(libraryPath() + destinationFileName);
+                String destinationFileName = requirePackUuid(storyPack.getUuid()) + ".converted_" + System.currentTimeMillis() + ".pack";
+                Path destinationPath = requireLibraryEntry(destinationFileName);
                 LOGGER.info("Moving raw format pack into local library: " + destinationPath);
                 Files.move(tmp.toPath(), destinationPath);
                 recordProvenance(packPath, sourceBefore, destinationPath, "raw");
@@ -304,7 +309,7 @@ public class LibraryService {
 
                 LOGGER.info("Reading raw format pack");
                 BinaryStoryPackReader packReader = new BinaryStoryPackReader();
-                FileInputStream fis = new FileInputStream(libraryPath() + packPath);
+                FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile());
                 StoryPack storyPack = packReader.read(fis);
                 fis.close();
 
@@ -318,8 +323,8 @@ public class LibraryService {
                 packWriter.write(compressedPack, fos);
                 fos.close();
 
-                String destinationFileName = compressedPack.getUuid() + ".converted_" + System.currentTimeMillis() + ".zip";
-                Path destinationPath = Paths.get(libraryPath() + destinationFileName);
+                String destinationFileName = requirePackUuid(compressedPack.getUuid()) + ".converted_" + System.currentTimeMillis() + ".zip";
+                Path destinationPath = requireLibraryEntry(destinationFileName);
                 LOGGER.info("Moving archive format pack into local library: " + destinationPath);
                 Files.move(tmp.toPath(), destinationPath);
                 recordProvenance(packPath, sourceBefore, destinationPath, "archive");
@@ -340,7 +345,7 @@ public class LibraryService {
 
                 LOGGER.info("Reading FS format pack");
                 FsStoryPackReader packReader = new FsStoryPackReader();
-                StoryPack storyPack = packReader.read(Paths.get(libraryPath() + packPath));
+                StoryPack storyPack = packReader.read(requireLibraryEntry(packPath));
 
                 // No need to compress pack assets
 
@@ -350,8 +355,8 @@ public class LibraryService {
                 packWriter.write(storyPack, fos);
                 fos.close();
 
-                String destinationFileName = storyPack.getUuid() + ".converted_" + System.currentTimeMillis() + ".zip";
-                Path destinationPath = Paths.get(libraryPath() + destinationFileName);
+                String destinationFileName = requirePackUuid(storyPack.getUuid()) + ".converted_" + System.currentTimeMillis() + ".zip";
+                Path destinationPath = requireLibraryEntry(destinationFileName);
                 LOGGER.info("Moving archive format pack into local library: " + destinationPath);
                 Files.move(tmp.toPath(), destinationPath);
                 recordProvenance(packPath, sourceBefore, destinationPath, "archive");
@@ -377,7 +382,7 @@ public class LibraryService {
 
                 LOGGER.info("Reading archive format pack");
                 ArchiveStoryPackReader packReader = new ArchiveStoryPackReader();
-                FileInputStream fis = new FileInputStream(libraryPath() + packPath);
+                FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile());
                 StoryPack storyPack = packReader.read(fis);
                 fis.close();
 
@@ -389,8 +394,8 @@ public class LibraryService {
                 FsStoryPackWriter writer = new FsStoryPackWriter();
                 Path folderPath = writer.write(packWithPreparedAssets, tmp);
 
-                String destinationFolder = packWithPreparedAssets.getUuid() + ".converted_" + System.currentTimeMillis();
-                Path destinationPath = Paths.get(libraryPath() + destinationFolder);
+                String destinationFolder = requirePackUuid(packWithPreparedAssets.getUuid()) + ".converted_" + System.currentTimeMillis();
+                Path destinationPath = requireLibraryEntry(destinationFolder);
                 LOGGER.info("Moving FS format pack into local library: " + destinationPath);
                 Files.move(folderPath, destinationPath);
                 recordProvenance(packPath, sourceBefore, destinationPath, "fs");
@@ -411,7 +416,7 @@ public class LibraryService {
 
                 LOGGER.info("Reading raw format pack");
                 BinaryStoryPackReader packReader = new BinaryStoryPackReader();
-                FileInputStream fis = new FileInputStream(libraryPath() + packPath);
+                FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile());
                 StoryPack storyPack = packReader.read(fis);
                 fis.close();
 
@@ -423,8 +428,8 @@ public class LibraryService {
                 FsStoryPackWriter writer = new FsStoryPackWriter();
                 Path folderPath = writer.write(packWithPreparedAssets, tmp);
 
-                String destinationFolder = packWithPreparedAssets.getUuid() + ".converted_" + System.currentTimeMillis();
-                Path destinationPath = Paths.get(libraryPath() + destinationFolder);
+                String destinationFolder = requirePackUuid(packWithPreparedAssets.getUuid()) + ".converted_" + System.currentTimeMillis();
+                Path destinationPath = requireLibraryEntry(destinationFolder);
                 LOGGER.info("Moving FS format pack into local library: " + destinationPath);
                 Files.move(folderPath, destinationPath);
                 recordProvenance(packPath, sourceBefore, destinationPath, "fs");
@@ -499,15 +504,95 @@ public class LibraryService {
      *                                  something nested inside it
      */
     private Path requireLibraryEntry(String name) {
+        return libraryEntry(name).orElseThrow(
+                () -> new IllegalArgumentException("Not an entry of the local library: " + name));
+    }
+
+    /**
+     * The single authority turning a name into a path this service is willing to act on.
+     *
+     * <p>A library entry is <strong>a direct child of the library folder</strong>. That is not a
+     * restriction invented here: the listing walks the folder one level deep, the client only ever
+     * receives names taken from that listing, and every conversion returns a bare name. Anything
+     * else — a nested path, an absolute one, a climb out and back in, {@code .} or {@code ..} — is
+     * refused.
+     *
+     * <p>Refused, never repaired. A caller asking for the wrong thing is told no rather than handed
+     * a different thing, because silently rewriting a path is how a caller ends up acting on
+     * something it did not name.
+     *
+     * <p>Containment is measured against the <em>configured</em> root, normalised lexically and not
+     * resolved through links. A library that a user has placed behind a symbolic link is a perfectly
+     * ordinary setup and stays supported; resolving the root to its real path would break it for no
+     * security gain, since the question is whether an <em>entry</em> leaves the library, not where
+     * the library itself lives.
+     *
+     * <p>Which is why lexical containment is not the whole check. An entry that already exists is
+     * examined with {@code NOFOLLOW_LINKS} and refused if it is a symbolic link, an NTFS junction or
+     * any other special entry: those are lexically direct children while pointing somewhere else
+     * entirely, and a recursive delete would follow one straight out of the library. Junctions in
+     * particular report {@code isSymbolicLink()} as false — measured in C7-2b — so {@code isOther()}
+     * is what catches them.
+     *
+     * <p>An entry that does not exist yet is allowed: an upload and a conversion both have to name a
+     * destination before creating it. The lexical rule still applies to it.
+     */
+    Optional<Path> libraryEntry(String name) {
         if (name == null || name.trim().isEmpty()) {
-            throw new IllegalArgumentException("A library entry name is required");
+            return Optional.empty();
         }
         Path libraryRoot = Paths.get(libraryPath()).toAbsolutePath().normalize();
-        Path resolved = libraryRoot.resolve(name).toAbsolutePath().normalize();
-        if (!libraryRoot.equals(resolved.getParent())) {
-            throw new IllegalArgumentException("Not an entry of the local library: " + name);
+        Path resolved;
+        try {
+            resolved = libraryRoot.resolve(name).toAbsolutePath().normalize();
+        } catch (InvalidPathException e) {
+            LOGGER.warn("Not a usable library entry name: " + name);
+            return Optional.empty();
         }
-        return resolved;
+        if (!libraryRoot.equals(resolved.getParent())) {
+            LOGGER.warn("Refused a name that is not a direct entry of the local library: " + name);
+            return Optional.empty();
+        }
+        try {
+            BasicFileAttributes attributes = Files.readAttributes(resolved, BasicFileAttributes.class,
+                    LinkOption.NOFOLLOW_LINKS);
+            if (attributes.isSymbolicLink() || attributes.isOther()) {
+                LOGGER.warn("Refused a library entry that is a link or a special entry: " + name);
+                return Optional.empty();
+            }
+        } catch (NoSuchFileException absent) {
+            // A destination that does not exist yet. The lexical rule above already holds.
+        } catch (IOException e) {
+            LOGGER.warn("Could not examine a library entry, refusing it: " + name, e);
+            return Optional.empty();
+        }
+        return Optional.of(resolved);
+    }
+
+    /**
+     * The identifier a conversion output is named after, refused unless it really is one.
+     *
+     * <p>The name of every converted artefact starts with the pack's UUID, and that UUID comes from
+     * the pack's own content — from a {@code story.json} for an archive, from a folder name for an
+     * fs pack. It is therefore not trusted input, and a value containing a separator would compose a
+     * destination path outside the library before anything else had a chance to object.
+     *
+     * <p>Checked by parsing it as a UUID rather than by looking for dangerous characters. A blacklist
+     * only refuses what it was told to think of; this states what is required. And it requires
+     * nothing new: {@code BinaryStoryPackWriter} and {@code FsStoryPackWriter} already call
+     * {@code UUID.fromString} on these values, as does the device driver in five places. All this
+     * does is ask the question before a path is built rather than after.
+     */
+    private static String requirePackUuid(String uuid) {
+        if (uuid == null) {
+            throw new IllegalArgumentException("A pack UUID is required to name a conversion");
+        }
+        try {
+            UUID.fromString(uuid);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Not a usable pack UUID: " + uuid, e);
+        }
+        return uuid;
     }
 
     /**
@@ -517,7 +602,7 @@ public class LibraryService {
      * observations that bracket a conversion, deterministically and without timing.
      */
     Optional<String> sourceIdentity(String packPath) {
-        Path source = Paths.get(libraryPath() + packPath);
+        Path source = requireLibraryEntry(packPath);
         return kindOf(packPath) == ConversionRecord.Kind.FILE
                 ? contentDigest.ofFile(source)
                 : contentDigest.ofTree(source);
@@ -601,7 +686,12 @@ public class LibraryService {
         try {
             // Copy temporary file to local library
             File src = new File(uploadedFilePath);
-            File dest = new File(libraryPath() + destPath);
+            Optional<Path> destination = libraryEntry(destPath);
+            if (!destination.isPresent()) {
+                // Refused before anything is deleted, moved or created.
+                return false;
+            }
+            File dest = destination.get().toFile();
             if (dest.exists()) {
                 boolean deleted = dest.delete();
                 // Handle failure
@@ -623,7 +713,14 @@ public class LibraryService {
             return false;
         } else {
             try {
-                File packFile = new File(libraryPath() + packPath);
+                Optional<Path> entry = libraryEntry(packPath);
+                if (!entry.isPresent()) {
+                    // The log below used to claim this while only checking that the file existed —
+                    // which one outside the folder does too. Now the claim is true.
+                    LOGGER.error("Cannot remove pack from library because it is not in the folder");
+                    return false;
+                }
+                File packFile = entry.get().toFile();
                 if (packFile.exists()) {
                     FileUtils.forceDelete(packFile);
                     return true;
