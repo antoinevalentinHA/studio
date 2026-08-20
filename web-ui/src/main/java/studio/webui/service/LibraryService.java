@@ -95,6 +95,10 @@ public class LibraryService {
         }
     }
 
+    private final ContentDigest contentDigest = new ContentDigest();
+
+    private final ConversionProvenanceStore provenanceStore = new ConversionProvenanceStore();
+
     public LibraryService(DatabaseMetadataService databaseMetadataService) {
         this.databaseMetadataService = databaseMetadataService;
 
@@ -204,6 +208,9 @@ public class LibraryService {
         // Archive format packs must first be converted to raw format
         if (packPath.endsWith(".zip")) {
             try {
+                // Observed before the conversion reads it; observed again afterwards, and
+                // recorded only if the two agree. See recordProvenance.
+                Optional<String> sourceBefore = sourceIdentity(packPath);
                 File tmp = createTempFile(packPath, ".pack").toFile();
 
                 LOGGER.info("Pack is in archive format. Converting to raw format and storing in temporary file: " + tmp.getAbsolutePath());
@@ -231,6 +238,7 @@ public class LibraryService {
                 Path destinationPath = Paths.get(libraryPath() + destinationFileName);
                 LOGGER.info("Moving raw format pack into local library: " + destinationPath);
                 Files.move(tmp.toPath(), destinationPath);
+                recordProvenance(packPath, sourceBefore, destinationPath, "raw");
 
                 return Optional.of(Paths.get(destinationFileName));
             } catch (Exception e) {
@@ -242,6 +250,9 @@ public class LibraryService {
             throw new RuntimeException("Pack is already in raw format");
         } else {
             try {
+                // Observed before the conversion reads it; observed again afterwards, and
+                // recorded only if the two agree. See recordProvenance.
+                Optional<String> sourceBefore = sourceIdentity(packPath);
                 File tmp = createTempFile(packPath, ".pack").toFile();
 
                 LOGGER.info("Pack is in FS format. Converting to raw format and storing in temporary file: " + tmp.getAbsolutePath());
@@ -267,6 +278,7 @@ public class LibraryService {
                 Path destinationPath = Paths.get(libraryPath() + destinationFileName);
                 LOGGER.info("Moving raw format pack into local library: " + destinationPath);
                 Files.move(tmp.toPath(), destinationPath);
+                recordProvenance(packPath, sourceBefore, destinationPath, "raw");
 
                 return Optional.of(Paths.get(destinationFileName));
             } catch (Exception e) {
@@ -283,6 +295,9 @@ public class LibraryService {
             throw new RuntimeException("Pack is already in archive format");
         } else if (packPath.endsWith(".pack")) {
             try {
+                // Observed before the conversion reads it; observed again afterwards, and
+                // recorded only if the two agree. See recordProvenance.
+                Optional<String> sourceBefore = sourceIdentity(packPath);
                 File tmp = createTempFile(packPath, ".zip").toFile();
 
                 LOGGER.info("Pack is in raw format. Converting to archive format and storing in temporary file: " + tmp.getAbsolutePath());
@@ -307,6 +322,7 @@ public class LibraryService {
                 Path destinationPath = Paths.get(libraryPath() + destinationFileName);
                 LOGGER.info("Moving archive format pack into local library: " + destinationPath);
                 Files.move(tmp.toPath(), destinationPath);
+                recordProvenance(packPath, sourceBefore, destinationPath, "archive");
 
                 return Optional.of(Paths.get(destinationFileName));
             } catch (Exception e) {
@@ -315,6 +331,9 @@ public class LibraryService {
             }
         } else {
             try {
+                // Observed before the conversion reads it; observed again afterwards, and
+                // recorded only if the two agree. See recordProvenance.
+                Optional<String> sourceBefore = sourceIdentity(packPath);
                 File tmp = createTempFile(packPath, ".zip").toFile();
 
                 LOGGER.info("Pack is in FS format. Converting to archive format and storing in temporary file: " + tmp.getAbsolutePath());
@@ -335,6 +354,7 @@ public class LibraryService {
                 Path destinationPath = Paths.get(libraryPath() + destinationFileName);
                 LOGGER.info("Moving archive format pack into local library: " + destinationPath);
                 Files.move(tmp.toPath(), destinationPath);
+                recordProvenance(packPath, sourceBefore, destinationPath, "archive");
 
                 return Optional.of(Paths.get(destinationFileName));
             } catch (Exception e) {
@@ -348,6 +368,9 @@ public class LibraryService {
         // Archive format packs must first be converted to FS format
         if (packPath.endsWith(".zip")) {
             try {
+                // Observed before the conversion reads it; observed again afterwards, and
+                // recorded only if the two agree. See recordProvenance.
+                Optional<String> sourceBefore = sourceIdentity(packPath);
                 Path tmp = createTempDirectory(packPath);
 
                 LOGGER.info("Pack to transfer is in archive format. Converting to FS format and storing in temporary folder: " + tmp.toAbsolutePath().toString());
@@ -370,6 +393,7 @@ public class LibraryService {
                 Path destinationPath = Paths.get(libraryPath() + destinationFolder);
                 LOGGER.info("Moving FS format pack into local library: " + destinationPath);
                 Files.move(folderPath, destinationPath);
+                recordProvenance(packPath, sourceBefore, destinationPath, "fs");
 
                 return Optional.of(Paths.get(destinationFolder));
             } catch (Exception e) {
@@ -378,6 +402,9 @@ public class LibraryService {
             }
         } else if (packPath.endsWith(".pack")) {
             try {
+                // Observed before the conversion reads it; observed again afterwards, and
+                // recorded only if the two agree. See recordProvenance.
+                Optional<String> sourceBefore = sourceIdentity(packPath);
                 Path tmp = createTempDirectory(packPath);
 
                 LOGGER.info("Pack is in raw format. Converting to FS format and storing in temporary folder: " + tmp.toAbsolutePath().toString());
@@ -400,6 +427,7 @@ public class LibraryService {
                 Path destinationPath = Paths.get(libraryPath() + destinationFolder);
                 LOGGER.info("Moving FS format pack into local library: " + destinationPath);
                 Files.move(folderPath, destinationPath);
+                recordProvenance(packPath, sourceBefore, destinationPath, "fs");
 
                 return Optional.of(Paths.get(destinationFolder));
             } catch (Exception e) {
@@ -409,6 +437,93 @@ public class LibraryService {
         } else {
             LOGGER.error("Pack is already in FS format");
             throw new RuntimeException("Pack is already in FS format");
+        }
+    }
+
+    /**
+     * The content identity of a library artefact used as a conversion source.
+     *
+     * <p>Package-private and overridable so a test can make the source change between the two
+     * observations that bracket a conversion, deterministically and without timing.
+     */
+    Optional<String> sourceIdentity(String packPath) {
+        Path source = Paths.get(libraryPath() + packPath);
+        return kindOf(packPath) == ConversionRecord.Kind.FILE
+                ? contentDigest.ofFile(source)
+                : contentDigest.ofTree(source);
+    }
+
+    /** A library artefact is a file when its name says so, and a tree otherwise. */
+    private static ConversionRecord.Kind kindOf(String name) {
+        return name.endsWith(".zip") || name.endsWith(".pack")
+                ? ConversionRecord.Kind.FILE
+                : ConversionRecord.Kind.TREE;
+    }
+
+    /**
+     * Writes down what this conversion was made from, once the artefact is installed and only if
+     * that can be said truthfully.
+     *
+     * <p>The source is observed twice, before the conversion reads it and again now, and a record is
+     * written only if the two observations are identical. Observing once would not do. Observe only
+     * before, and a source edited during the conversion is recorded as the one that produced an
+     * artefact made from something else. Observe only after, and the opposite: the edited source is
+     * recorded, so later it will match, and an artefact that did not come from it is reused without
+     * a word — the silent wrong transfer this whole line of work exists to prevent.
+     *
+     * <p>What the bracket establishes is narrower than it may look, and worth stating plainly: two
+     * stable observations of the source, taken before and after the whole conversion, were equal. It
+     * is not a filesystem transaction, and it does not prove that the bytes hashed are the bytes the
+     * converter consumed — a change followed by an exact restoration inside the window is invisible
+     * to it. It does close the two ordinary races: a source edited during the conversion and left
+     * edited, and a source edited before the final observation.
+     *
+     * <p>Nothing here can make a conversion fail. The artefact is installed before this runs, and
+     * every way of failing to describe it — an unstable source, an unreadable artefact, a ledger
+     * that cannot be written — ends the same way: a log line, no record, and the conversion returned
+     * to the caller exactly as it would have been. The artefact simply stays unproven, which is what
+     * every artefact in every library is today.
+     */
+    private void recordProvenance(String packPath, Optional<String> sourceBefore, Path artifact,
+                                  String targetFormat) {
+        try {
+            String artifactName = artifact.getFileName().toString();
+            if (!sourceBefore.isPresent()) {
+                LOGGER.warn("No provenance for `" + artifactName + "`: the source could not be read"
+                        + " before the conversion");
+                return;
+            }
+            Optional<String> sourceAfter = sourceIdentity(packPath);
+            if (!sourceAfter.isPresent()) {
+                LOGGER.warn("No provenance for `" + artifactName + "`: the source could not be read"
+                        + " after the conversion");
+                return;
+            }
+            if (!sourceBefore.get().equals(sourceAfter.get())) {
+                LOGGER.warn("No provenance for `" + artifactName + "`: `" + packPath + "` changed"
+                        + " while it was being converted, so it cannot be recorded as the source");
+                return;
+            }
+            ConversionRecord.Kind artifactKind = kindOf(artifactName);
+            Optional<String> artifactDigest = artifactKind == ConversionRecord.Kind.FILE
+                    ? contentDigest.ofFile(artifact)
+                    : contentDigest.ofTree(artifact);
+            if (!artifactDigest.isPresent()) {
+                LOGGER.warn("No provenance for `" + artifactName + "`: the artefact could not be read");
+                return;
+            }
+            BasicFileAttributes attributes = Files.readAttributes(artifact, BasicFileAttributes.class);
+            ConversionRecord record = new ConversionRecord(
+                    Paths.get(packPath).getFileName().toString(), kindOf(packPath), sourceBefore.get(),
+                    artifactKind, artifactDigest.get(), attributes.size(),
+                    attributes.lastModifiedTime().toMillis(), targetFormat, ApplicationVersion.current());
+            if (!provenanceStore.record(artifactName, record)) {
+                LOGGER.warn("No provenance for `" + artifactName + "`: the provenance database could"
+                        + " not be written. The conversion is unaffected.");
+            }
+        } catch (IOException | RuntimeException e) {
+            // Describing a conversion must never undo one.
+            LOGGER.error("Failed to record provenance for a conversion that succeeded", e);
         }
     }
 

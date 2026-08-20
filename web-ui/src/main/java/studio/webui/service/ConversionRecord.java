@@ -24,6 +24,11 @@ package studio.webui.service;
  * policy is wanted; using them today would apply a policy that has not been decided. Provenance —
  * "this came from that" — is a different question from freshness — "the converter that made it is
  * still the one we would use".
+ *
+ * <p>{@code converterVersion} is the application's own version — the one the build stamps into
+ * {@code evergreen.properties} and already reports at runtime. It is a {@code String} because that
+ * is what the project actually has: there is no integer version anywhere in it, and inventing one
+ * would put a made-up number where a verifiable fact belongs.
  */
 public final class ConversionRecord {
 
@@ -40,11 +45,11 @@ public final class ConversionRecord {
     private final long artifactSize;
     private final long artifactLastModified;
     private final String targetFormat;
-    private final int converterVersion;
+    private final String converterVersion;
 
     public ConversionRecord(String sourceName, Kind sourceKind, String sourceSha256,
                             Kind artifactKind, String artifactSha256, long artifactSize,
-                            long artifactLastModified, String targetFormat, int converterVersion) {
+                            long artifactLastModified, String targetFormat, String converterVersion) {
         this.sourceName = sourceName;
         this.sourceKind = sourceKind;
         this.sourceSha256 = sourceSha256;
@@ -88,7 +93,7 @@ public final class ConversionRecord {
         return targetFormat;
     }
 
-    public int getConverterVersion() {
+    public String getConverterVersion() {
         return converterVersion;
     }
 }
