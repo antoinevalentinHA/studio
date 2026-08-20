@@ -75,7 +75,7 @@ Nothing here touches a device. Fixtures are synthesised in code; no device data 
 
 | Suite | Tests |
 | --- | --- |
-| Java, standard | **278**, 14 skipped — the opt-in FAT32 classes, and two link cases each of which only one platform can set up |
+| Java, standard | **282**, 14 skipped — the opt-in FAT32 classes, and two link cases each of which only one platform can set up |
 | Java, with `-Dstudio.test.fat32.root=<volume>` | last measured at **172** before the C6d-5 additions; not re-measured since, because it needs the volume mounted |
 | JavaScript | **57** |
 
@@ -120,6 +120,7 @@ counts.
 | What each of the six conversions records about itself, and every reason it records nothing | `ConversionProvenanceTest` | `web-ui` module; **specifications** |
 | When a conversion is proven to match its source, and every reason it is not | `ConversionVerificationTest` | `web-ui` module; **specifications** — only MATCH removes a confirmation; a path outside the library is refused rather than answered |
 | Where a library operation may reach: direct children only, links refused, nominal cases intact | `LibraryPathConfinementTest` | `web-ui` module; **specifications** — converted from characterization once the confinement existed. The symbolic-link case is Linux-only and the junction case Windows-only |
+| A conversion releases its source and its temporary even when the reader or writer throws | `ConversionStreamLifecycleTest` | `web-ui` module; **specifications** — asserts the consequence by deleting the work folder, so the three failure cases are Windows-only |
 
 Web UI (`web-ui/javascript`, run by yarn):
 

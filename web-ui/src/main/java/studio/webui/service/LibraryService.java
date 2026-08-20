@@ -222,9 +222,10 @@ public class LibraryService {
 
                 LOGGER.info("Reading archive format pack");
                 ArchiveStoryPackReader packReader = new ArchiveStoryPackReader();
-                FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile());
-                StoryPack storyPack = packReader.read(fis);
-                fis.close();
+                StoryPack storyPack;
+                try (FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile())) {
+                    storyPack = packReader.read(fis);
+                }
 
                 // Uncompress pack assets
                 StoryPack uncompressedPack = storyPack;
@@ -235,9 +236,9 @@ public class LibraryService {
 
                 LOGGER.info("Writing raw format pack");
                 BinaryStoryPackWriter packWriter = new BinaryStoryPackWriter();
-                FileOutputStream fos = new FileOutputStream(tmp);
-                packWriter.write(uncompressedPack, fos, allowEnriched);
-                fos.close();
+                try (FileOutputStream fos = new FileOutputStream(tmp)) {
+                    packWriter.write(uncompressedPack, fos, allowEnriched);
+                }
 
                 String destinationFileName = requirePackUuid(storyPack.getUuid()) + ".converted_" + System.currentTimeMillis() + ".pack";
                 Path destinationPath = requireLibraryEntry(destinationFileName);
@@ -275,9 +276,9 @@ public class LibraryService {
 
                 LOGGER.info("Writing raw format pack");
                 BinaryStoryPackWriter packWriter = new BinaryStoryPackWriter();
-                FileOutputStream fos = new FileOutputStream(tmp);
-                packWriter.write(uncompressedPack, fos, allowEnriched);
-                fos.close();
+                try (FileOutputStream fos = new FileOutputStream(tmp)) {
+                    packWriter.write(uncompressedPack, fos, allowEnriched);
+                }
 
                 String destinationFileName = requirePackUuid(storyPack.getUuid()) + ".converted_" + System.currentTimeMillis() + ".pack";
                 Path destinationPath = requireLibraryEntry(destinationFileName);
@@ -309,9 +310,10 @@ public class LibraryService {
 
                 LOGGER.info("Reading raw format pack");
                 BinaryStoryPackReader packReader = new BinaryStoryPackReader();
-                FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile());
-                StoryPack storyPack = packReader.read(fis);
-                fis.close();
+                StoryPack storyPack;
+                try (FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile())) {
+                    storyPack = packReader.read(fis);
+                }
 
                 // Compress pack assets
                 LOGGER.info("Compressing pack assets");
@@ -319,9 +321,9 @@ public class LibraryService {
 
                 LOGGER.info("Writing archive format pack");
                 ArchiveStoryPackWriter packWriter = new ArchiveStoryPackWriter();
-                FileOutputStream fos = new FileOutputStream(tmp);
-                packWriter.write(compressedPack, fos);
-                fos.close();
+                try (FileOutputStream fos = new FileOutputStream(tmp)) {
+                    packWriter.write(compressedPack, fos);
+                }
 
                 String destinationFileName = requirePackUuid(compressedPack.getUuid()) + ".converted_" + System.currentTimeMillis() + ".zip";
                 Path destinationPath = requireLibraryEntry(destinationFileName);
@@ -351,9 +353,9 @@ public class LibraryService {
 
                 LOGGER.info("Writing archive format pack");
                 ArchiveStoryPackWriter packWriter = new ArchiveStoryPackWriter();
-                FileOutputStream fos = new FileOutputStream(tmp);
-                packWriter.write(storyPack, fos);
-                fos.close();
+                try (FileOutputStream fos = new FileOutputStream(tmp)) {
+                    packWriter.write(storyPack, fos);
+                }
 
                 String destinationFileName = requirePackUuid(storyPack.getUuid()) + ".converted_" + System.currentTimeMillis() + ".zip";
                 Path destinationPath = requireLibraryEntry(destinationFileName);
@@ -382,9 +384,10 @@ public class LibraryService {
 
                 LOGGER.info("Reading archive format pack");
                 ArchiveStoryPackReader packReader = new ArchiveStoryPackReader();
-                FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile());
-                StoryPack storyPack = packReader.read(fis);
-                fis.close();
+                StoryPack storyPack;
+                try (FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile())) {
+                    storyPack = packReader.read(fis);
+                }
 
                 // Prepare assets (RLE-encoded BMP, audio must already be MP3)
                 LOGGER.info("Converting assets if necessary");
@@ -416,9 +419,10 @@ public class LibraryService {
 
                 LOGGER.info("Reading raw format pack");
                 BinaryStoryPackReader packReader = new BinaryStoryPackReader();
-                FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile());
-                StoryPack storyPack = packReader.read(fis);
-                fis.close();
+                StoryPack storyPack;
+                try (FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile())) {
+                    storyPack = packReader.read(fis);
+                }
 
                 // Prepare assets (RLE-encoded BMP, audio must already be MP3)
                 LOGGER.info("Converting assets if necessary");
