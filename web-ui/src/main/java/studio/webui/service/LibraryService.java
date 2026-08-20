@@ -33,6 +33,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
@@ -51,8 +53,47 @@ public class LibraryService {
 
     private final DatabaseMetadataService databaseMetadataService;
 
-    private final Cache<Path, Optional<LibraryPack>> cachedPacks = Caffeine.newBuilder()
+    /*
+     * Parsed packs, keyed by path, alongside the file attributes they were read with.
+     *
+     * Reading a pack means walking its whole archive, so the result is worth keeping. What is not
+     * worth keeping is the assumption that a path still holds the same file: this cache used to
+     * store the parse alone and hand it back for five minutes regardless of what had happened on
+     * disk, which meant a pack overwritten in place kept reporting its previous title, timestamp and
+     * everything else until the entry expired. Overwriting in place is not unusual — saving from the
+     * editor writes to the file name the pack was opened under, and dropping the same file into the
+     * library twice does the same thing.
+     *
+     * So an entry now carries the size and modification time observed at the moment of the parse,
+     * and is reused only while both still match. See readPackFileCached.
+     */
+    private final Cache<Path, CachedPack> cachedPacks = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofMinutes(5)).build();
+
+    /**
+     * A parse, and the observable state of the file it came from.
+     *
+     * <p>{@code pack} is an {@code Optional} because a failed parse is a result like any other and
+     * is cached like any other — but a failed parse of <em>that</em> version of the file. A pack
+     * copied into the library and read while the copy was still running fails to parse, and used to
+     * stay invisible for five minutes after the copy finished; bound to the attributes it was read
+     * with, the failure is forgotten as soon as the file changes.
+     */
+    private static final class CachedPack {
+        private final Optional<LibraryPack> pack;
+        private final long size;
+        private final FileTime lastModifiedTime;
+
+        private CachedPack(Optional<LibraryPack> pack, BasicFileAttributes attributes) {
+            this.pack = pack;
+            this.size = attributes.size();
+            this.lastModifiedTime = attributes.lastModifiedTime();
+        }
+
+        private boolean matches(BasicFileAttributes attributes) {
+            return size == attributes.size() && lastModifiedTime.equals(attributes.lastModifiedTime());
+        }
+    }
 
     public LibraryService(DatabaseMetadataService databaseMetadataService) {
         this.databaseMetadataService = databaseMetadataService;
@@ -96,7 +137,7 @@ public class LibraryService {
                 paths
                         .filter(Files::isRegularFile)
                         .filter(path -> path.toString().endsWith(".zip"))
-                        .map(p -> cachedPacks.get(p, this::readPackFile))
+                        .map(this::readPackFileCached)
                         .filter(Optional::isPresent)
                         .map(Optional::get)
                         // Group packs by UUID
@@ -128,7 +169,7 @@ public class LibraryService {
                 return new JsonArray(
                         paths
                                 .filter(path -> !path.equals(Paths.get(libraryPath())))
-                                .map(p -> cachedPacks.get(p, this::readPackFile))
+                                .map(this::readPackFileCached)
                                 .filter(Optional::isPresent)
                                 .map(Optional::get)
                                 // Group packs by UUID
@@ -428,6 +469,39 @@ public class LibraryService {
 
     private Path createTempDirectory(String prefix) throws IOException {
         return Files.createTempDirectory(Paths.get(tmpDirPath()), prefix);
+    }
+
+    /**
+     * The cached parse for a path, if the file there is still the one it was made from.
+     *
+     * <p>"Still the one" means the same size and the same modification time — one stat, both values,
+     * no reading of content. That is a coherence check on fast observable attributes, and its limit
+     * is exactly what those attributes cannot see: a replacement of identical size whose modification
+     * time has been restored goes unnoticed. Closing that gap would mean reading the file to compare
+     * it, which is the work this cache exists to avoid. It is a different question in any case —
+     * whether a particular converted pack was produced from a particular source is about the
+     * relationship between two files, not about one path at one moment, and nothing here answers it.
+     *
+     * <p>If the attributes cannot be read at all, the cached entry is not reused and not trusted:
+     * whatever {@code readPackFile} makes of the path as it is now becomes the answer.
+     */
+    private Optional<LibraryPack> readPackFileCached(Path path) {
+        BasicFileAttributes attributes;
+        try {
+            attributes = Files.readAttributes(path, BasicFileAttributes.class);
+        } catch (IOException e) {
+            LOGGER.debug("Cannot read attributes, parsing without the cache: " + path.toString());
+            return readPackFile(path);
+        }
+
+        CachedPack cached = cachedPacks.getIfPresent(path);
+        if (cached != null && cached.matches(attributes)) {
+            return cached.pack;
+        }
+
+        Optional<LibraryPack> pack = readPackFile(path);
+        cachedPacks.put(path, new CachedPack(pack, attributes));
+        return pack;
     }
 
     private Optional<LibraryPack> readPackFile(Path path) {
