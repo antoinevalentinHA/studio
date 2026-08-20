@@ -6,7 +6,7 @@ complements them.
 
 ## Scope
 
-This file records **two sessions**, months apart, on different builds.
+This file records **three sessions**, on different builds.
 
 The first exercised `0.4.3-SNAPSHOT` carrying the five hardening changes merged as C1 to C5, i.e. the
 tree at commit `22e457d`. The host was a single Windows machine. Two story tellers were used. It
@@ -17,9 +17,13 @@ The second exercised the C6 series — the reworked `.pi` write path — on one 
 is recorded under *Field validation — the C6 write path on real hardware*, and it is the first field
 evidence of that code.
 
+The third exercised the same C6 write path again, this time on **both** devices, and is recorded
+under *Second C6 field session — a second device and three more writes*.
+
 These are field observations. They complement the automated tests; they do not replace them, and
 they do not generalise. Nothing here has been verified across other firmware revisions, other
-Windows versions, other SD cards or other machines, and the sample is two devices.
+Windows versions, other SD cards or other machines, and the sample is two devices on one firmware
+revision, driven from one host.
 
 Where a fact below is an observation rather than a demonstrated property, it says so.
 
@@ -27,8 +31,8 @@ Where a fact below is an observation rather than a demonstrated property, it say
 
 | Device | Serial | Notes |
 | --- | --- | --- |
-| A | `40024040004586` | first session: four packs written and read back; also the device involved in the incident described below. Second session: the only device exercised |
-| B | `23424040008282` | first session: one pack written and read back. Not exercised in the second session |
+| A | `40024040004586` | first session: four packs written and read back; also the device involved in the incident described below. Second session: the only device exercised. Third session: two more adds |
+| B | `23424040008282` | first session: one pack written and read back. Not exercised in the second session. **Third session: written to under the C6 write path** |
 
 Serial numbers are recorded because the read-only preflight below checks them, and because the
 incident timeline is tied to one specific device.
@@ -204,7 +208,9 @@ were not performed.
 
 ### Limits
 
-- One machine, one firmware revision (`3.3`), one SD card, one device for the writes, one session.
+- One machine, one firmware revision (`3.3`), one SD card, one device for the writes, one session —
+  all of that describes *this* session. The session recorded below adds a second device; the rest of
+  these limits survive it unchanged.
 - **No interruption was attempted during an `ATOMIC_MOVE`**, nor during a copy.
 - No unsafe-disconnection or power-loss stress test of any kind.
 - **No physical crash-safety is demonstrated.** `force` remains a request to the operating system,
@@ -218,8 +224,109 @@ were not performed.
 The session also exposed a stale converted-cache issue: a same-UUID re-transfer could reuse an
 out-of-date `converted_*` folder from the local library and send the previous content to the device.
 That lives in the library and conversion path, **not** in the device filesystem write path — the
-write itself was correct and reported honestly, and the index was right. It is tracked separately and
-is not addressed here.
+write itself was correct and reported honestly, and the index was right. It was tracked separately;
+the silent part of it has since been closed by C7-1, which is described where the next session
+touches the same subject.
+
+## Second C6 field session — a second device and three more writes
+
+A third session, later than both of the above, exercised the same reworked `.pi` write path. What it
+adds over the session before it is one thing above all: **device B was written to**, so the C6 write
+path is no longer evidenced on a single story teller.
+
+### Runtime, host, devices
+
+- Build: `0.4.3-SNAPSHOT` carrying the C6 series, rebuilt and relaunched — **188 tests, 0 failures**.
+  That is the build used in this field session, not a standing figure for the repository, and the
+  repository has moved since.
+- Host: a single Windows machine — the same one.
+- Device **A**, serial `40024040004586`, firmware `3.3`.
+- Device **B**, serial `23424040008282`, firmware `3.3`.
+- Verification read from the driver log, i.e. the count parsed from the real `.pi`, as before.
+
+The session opened with device A at 31 packs, which is where the previous session left it.
+
+### Operations exercised
+
+Three adds. No deletions, no replacements.
+
+| Device | Pack | UUID suffix | Index count | Outcome |
+| --- | --- | --- | --- | --- |
+| **B** | Cornebidouille - Musique | `fea112e9` | 5 → 6 | completed |
+| **A** | Cornebidouille - Musique | `fea112e9` | 31 → 32 | completed |
+| **A** | Lucky Luke contre les Daltons | `3d75e924` | 32 → 33 | completed |
+
+Final state: device A at 33 packs, device B at 6.
+
+### Observed result
+
+- No `INVALID_STATE_ERR`, no libusb error, no HTTP 500 over the window.
+- Index counts re-read and stable, moving by exactly one per operation.
+- UUID uniqueness confirmed across the index — no duplicate entry.
+- The seven personal packs already on device A were intact after each operation.
+
+**What this establishes, and no more:** three further operations completed cleanly, one of them on a
+device that had not previously been written to under this code, and the index was correct after each.
+It says nothing about operations that were not performed.
+
+### An additional pack topology
+
+One of the packs used a graph shape the earlier sessions had not produced: a single action node
+holding every track, each track carrying `autoJumpEnabled` and an OK transition to the next, so that
+autoplay and the OK button follow the same edge; the last track returns to a cover node rather than
+looping. It passed STUdio's own *Verify* with no error and played correctly on both devices.
+
+This is an **authoring and compatibility observation** — that the editor accepts the graph and the
+firmware plays what was written. It is not a new property of the write path, which copies whatever it
+is given and cannot distinguish one graph shape from another. It is recorded because it is an
+additional pack topology exercised through the same C6 write path, not because it demonstrates
+anything about integrity.
+
+### The converted cache, as it stood then
+
+The second transfer in the table above sent the same unchanged pack to a second device, reusing the
+converted instance produced for the first, with no re-encoding. The content that arrived was correct,
+and reusing the conversion was the right thing to do — the source had not changed.
+
+**That observation describes the build used in this session, which predates C7-1. It is not what
+`master` does now.** C7-1 changed this path: when a source candidate and a device-compatible
+converted instance both exist in the library, STUdio no longer chooses between them silently; it
+asks. The same transfer today would present that choice rather than reuse the conversion without a
+word.
+
+What the session does show is that reusing an existing conversion **can** be correct when the source
+content is unchanged — and equally, that the timestamp comparison the old code used could not
+establish that fact reliably. It could not: the artefacts are *named* with the UUID and the library
+*groups* them by UUID, but neither the naming nor the grouping records which source a conversion was
+produced from, and modification times do not answer that question. Same UUID does not imply same
+content, and nothing in the library proved otherwise.
+
+C7-1 removed the silence, not the uncertainty. Establishing that a given conversion was produced from
+a given source is still an open problem, and this session is a concrete argument for solving it: the
+same pack distributed to several devices is an ordinary thing to want, and it is exactly the case
+where a reusable cache is both correct and, today, unprovable.
+
+On method: the field report used the count of re-encoding lines in the driver log to tell a fresh
+conversion from a reused one — eight for the transfer to B, none for the transfer to A. Their
+presence does prove a re-encoding happened. Their absence is only meaningful when the logging
+configuration in use actually emits those lines, which are logged at `FINE`; read the count as an
+observation from this session rather than as a general test.
+
+### Limits
+
+Everything the previous session could not establish, it still cannot. The sample grew; its shape did
+not.
+
+- Two devices, **one firmware revision** (`3.3`), one host machine, one operating system, one
+  session.
+- Three operations, all adds. No replacement and no deletion were exercised here.
+- No interruption was attempted during an `ATOMIC_MOVE` or a copy.
+- No unsafe-disconnection or power-loss test of any kind.
+- **No physical crash-safety is demonstrated.**
+- Additional successful writes on the previously affected device do not establish the cause of the
+  historical corruption.
+- Nothing here generalises to other firmware revisions, other hardware revisions, other cards, other
+  hosts or other Windows versions.
 
 ## Remaining integrity gap
 
@@ -234,23 +341,24 @@ temporary that is created exclusively and cleaned up on failure, synchronised wi
 installed by a single atomic move with no fallback to the previous non-atomic copy. The free-space
 precheck and the index parsing were hardened too. `TESTING.md` describes all of it.
 
-That code **has now been exercised on a device**, in the single session recorded above. What each
-kind of evidence covers:
+That code **has now been exercised on two devices**, across the two C6 sessions recorded above. What
+each kind of evidence covers:
 
 | Kind of evidence | What it covers |
 | --- | --- |
 | Automated tests | NTFS on Linux and Windows, in CI |
 | Filesystem characterization | one disposable FAT32 VHD, run by hand, never in CI |
-| Field observation | the C1–C5 sessions, **and** one session exercising the reworked write path on device A — adds, same-UUID replacements, index verified from the driver log |
-| Not proven | what happens if power is lost or the device pulled mid-install; that anything reached the flash; any other device, firmware revision, card or host; the cause of the FAT incident |
+| Field observation | the C1–C5 sessions, **and** two sessions exercising the reworked write path on **two devices**, both on firmware `3.3` from the same Windows host — adds on both, same-UUID replacements on device A, an additional pack topology played on both, index verified from the driver log throughout |
+| Not proven | what happens if power is lost or the device pulled mid-install; that anything reached the flash; any other firmware revision, hardware revision, card or host; the cause of the FAT incident; that a given converted instance was produced from a given source |
 
 A VHD is not a story teller. It shares a filesystem format and nothing else: no firmware, no SD
 controller, no removable-media timing — so the characterization work and the field session remain
 different kinds of evidence and neither substitutes for the other.
 
-The field session moves one thing, and precisely one: **whether this code has ever run against real
-hardware**. It has, once, and the operations completed. It does not move anything about interruption,
-durability or generalisation, none of which that session tested.
+The field sessions move one thing, and precisely one: **whether this code has run against real
+hardware**. It has — on two devices now, across two sessions, and the operations completed. That is a
+larger sample, not a different kind of evidence: it does not move anything about interruption,
+durability or generalisation, none of which either session tested.
 
 ### What is still open
 
@@ -260,6 +368,8 @@ durability or generalisation, none of which that session tested.
 - Nothing detects or reports partial states on a device at connection time.
 - Firmware behaviour remains unknown: how a device reacts to a stray `.pi.new`, to a visible `.pi`,
   or to an index whose size is not a multiple of 16 is not documented anywhere here.
+- Nothing establishes that a converted instance in the local library was produced from the source
+  that now sits beside it. C7-1 stopped STUdio from assuming it; it did not make it knowable.
 
 No conclusion about resilience to interruption or to power loss should be drawn from the field
 results recorded in this document, nor from the filesystem work that followed them.
