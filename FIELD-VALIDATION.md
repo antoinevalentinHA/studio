@@ -479,10 +479,14 @@ durability or generalisation, none of which any session tested.
 
 ### What is still open
 
-- An upload that fails part-way leaves an orphan `.content` folder that nothing cleans up, and
-  retrying it has no defined semantics.
+- An upload that fails part-way leaves an orphan `.content` folder that nothing cleans up. Retrying
+  is no longer undefined — the folder is refused, deliberately and with an explanation, rather than
+  written into — but nothing offers a supported way out of the state it leaves. The fourth session
+  observed the refusal from the outside: replacing a pack has to be done as delete then transfer.
 - `deletePack` rewrites the index before removing the content it points at.
-- Nothing detects or reports partial states on a device at connection time.
+- Partial states are still not surfaced. The driver can list `.content` folders the index does not
+  reference, but nothing calls it: a device is not examined when it is plugged in, the web UI never
+  shows them, and the listing acts on nothing by design.
 - Firmware behaviour remains unknown: how a device reacts to a stray `.pi.new`, to a visible `.pi`,
   or to an index whose size is not a multiple of 16 is not documented anywhere here.
 - A conversion made **before** provenance was recorded still cannot be tied to the source beside it.
