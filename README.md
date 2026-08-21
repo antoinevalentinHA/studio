@@ -106,13 +106,21 @@ Two caveats worth knowing before reading anything into any of those numbers:
 
 ## Getting started
 
-There is **no release, and no tag, for this fork yet**. The download link in the upstream
-instructions below points at upstream's own build, which does **not** contain any of the changes
-described here.
+The first public pre-release of this fork is available as
+[`0.4.3-fork.1`](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1). It is a
+**pre-release**: published to widen validation beyond the devices used during development, not
+because the work is finished. Read *Current status* and *Limitations* above first.
 
-**Building from source is the only way to run this fork today.** The upstream prerequisites apply
-unchanged — Java JDK 11+ to run it, Maven 3+ to build it — but clone **this** repository rather than
-the one named in *For developers*:
+The download link in the upstream instructions below still points at upstream's own build, which
+does **not** contain any of the changes described here.
+
+**Download the pre-release.** Take `studio-web-ui-0.4.3-fork.1-dist.zip` from
+[that release](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1), unzip it, and
+run the launcher script for your platform. The prerequisites and the rest of the procedure are the
+upstream ones, described under *Usage* below.
+
+**Or build from source.** The upstream prerequisites apply unchanged — Java JDK 11+ to run it,
+Maven 3+ to build it — but clone **this** repository rather than the one named in *For developers*:
 
 ```
 git clone https://github.com/antoinevalentinHA/studio.git
@@ -120,10 +128,7 @@ cd studio
 mvn clean install
 ```
 
-That produces the distribution archive in `web-ui/target/`; unzip it and run the launcher script for
-your platform, as the upstream instructions describe.
-
-Packaging a release for the fork has not been decided.
+That produces the same distribution archive in `web-ui/target/`.
 
 ## Relationship to upstream
 
@@ -144,7 +149,9 @@ deciding which file is transferred, which this fork changed. Nothing else in it 
 [![Upstream release](https://img.shields.io/github/v/release/marian-m12l/studio?label=upstream%20release)](https://github.com/marian-m12l/studio/releases/latest)
 
 *This badge and the download links below refer to **upstream** builds, which do not include this
-fork's changes. This fork has no release of its own yet — see [Getting started](#getting-started).*
+fork's changes. This fork's own pre-release is
+[`0.4.3-fork.1`](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1) — see
+[Getting started](#getting-started).*
 
 > [!WARNING]
 > Support for V3 devices has been added thanks to the community effort! :partying_face:
@@ -183,7 +190,9 @@ USAGE
 ### Installation
 
 * **Download** [the latest upstream release](https://github.com/marian-m12l/studio/releases/latest)
-— this is upstream's build and does not contain this fork's changes; there is no fork release yet —
+— this is upstream's build and does not contain this fork's changes; for this fork, take the archive
+from [its own pre-release](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1)
+instead —
 (alternatively, you can [build the application](#for-developers)).
 * **Unzip** the distribution archive
 * **Run the launcher script**: either `studio-linux.sh`, `studio-macos.sh` or `studio-windows.bat` depending on your
