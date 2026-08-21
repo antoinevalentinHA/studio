@@ -141,8 +141,10 @@ maintained here.
 
 The rest of this file is the upstream README, kept as it was except where it would say something
 untrue of this fork. What is annotated: the release badge and the download link, which refer to
-upstream builds; the clone URL, which is upstream's repository and not this one; and the rule
-deciding which file is transferred, which this fork changed. Nothing else in it is edited.
+upstream builds; the clone URL, which is upstream's repository and not this one; the rule deciding
+which file is transferred, which this fork changed; and the asset format lists, whose asterisk
+markers were dropped in an upstream rewrite while the sentence explaining them stayed, so that the
+text described markers no longer present. Nothing else in it is edited.
 
 ---
 
@@ -242,8 +244,7 @@ The editor supports several file formats for audio and image assets.
 
 ##### Images
 
-Image files may use the following formats (formats marked with asterisks are automatically converted when transferring
-to the device) :
+Image files may use the following formats:
 * PNG
 * JPEG
 * BMP (24-bits)
@@ -253,13 +254,30 @@ the screen being behind the plastic cover. Bear in mind that the color of the co
 
 ##### Audio
 
-Audio files may use the following formats (formats marked with asterisks are automatically converted when transferring
-to the device) :
+Audio files may use the following formats:
 * MP3
 * OGG/Vorbis
 * WAVE (signed 16-bits, mono, 32000 Hz)
 
 MP3 and OGG files are expected to be sampled at 44100Hz.
+
+##### Conversion when transferring
+
+The formats above are what the **editor** accepts. What reaches the **device** is narrower, and
+depends on the pack format being transferred:
+
+* a `Raw` pack (firmware v1.x) carries 24-bit BMP images and WAVE audio (signed 16-bits, mono,
+  32000 Hz);
+* an `FS` pack (firmware v2.x) carries 4-bit RLE-encoded BMP images and MP3 audio (mono, 44100 Hz).
+
+Assets not already in the target form are converted while the transfer is prepared. This is not
+limited to the compressed formats: transferring to an `FS` pack re-encodes a 24-bit BMP into a
+4-bit RLE BMP, and re-encodes an MP3 that is not mono/44100 Hz (an MP3 kept as it is has its ID3
+tags removed).
+
+Conversely, on the `Raw` path a BMP or a WAVE file is written out as it stands, its bit depth and
+its sample parameters unchecked. Meeting the constraints listed above is therefore yours to do, not
+something the conversion will fix.
 
 #### Wiki
 
