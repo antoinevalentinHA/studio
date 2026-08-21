@@ -156,8 +156,10 @@ redevient actif ; d'ici là, les changements ci-dessus sont maintenus ici.
 
 La suite de ce fichier est le README amont, conservé tel quel sauf là où il dirait quelque chose de
 faux pour ce fork. Ce qui est annoté : le badge de release et le lien de téléchargement, qui
-désignent des constructions amont ; l'URL de clonage, qui est le dépôt amont et non celui-ci ; et la
-règle déterminant quel fichier est transféré, que ce fork a changée. Rien d'autre n'y est modifié.
+désignent des constructions amont ; l'URL de clonage, qui est le dépôt amont et non celui-ci ; la
+règle déterminant quel fichier est transféré, que ce fork a changée ; et les listes de formats
+d'assets, dont les astérisques ont disparu lors d'une réécriture amont alors que la phrase qui les
+expliquait est restée, décrivant ainsi des marqueurs absents. Rien d'autre n'y est modifié.
 
 ---
 
@@ -258,8 +260,7 @@ L'éditeur supporte plusieurs formats de fichiers pour l'audio et les images.
 
 ##### Images
 
-Les fichiers image peuvent utiliser les formats suivants (les formats marqués d'astérisques sont automatiquement
-convertis lors du transfert vers l'appareil) :
+Les fichiers image peuvent utiliser les formats suivants :
 * PNG
 * JPEG
 * BMP (24-bits)
@@ -270,13 +271,31 @@ couleur du boîtier peut changer.
 
 ##### Audio
 
-Les fichiers audio peuvent utiliser les formats suivants (les formats marqués d'astérisques sont automatiquement
-convertis lors du transfert vers l'appareil) :
+Les fichiers audio peuvent utiliser les formats suivants :
 * MP3
 * OGG/Vorbis 
 * WAVE (16-bits signés, mono, 32000 Hz)
 
 Les fichiers MP3 et OGG doivent, eux, être échantillonnés à 44100Hz.
+
+##### Conversion lors du transfert
+
+Les formats ci-dessus sont ceux qu'accepte l'**éditeur**. Ce qui arrive sur l'**appareil** est plus
+restreint, et dépend du format de pack transféré :
+
+* un pack `Raw` (firmware v1.x) contient des images BMP 24 bits et de l'audio WAVE (16 bits signés,
+  mono, 32000 Hz) ;
+* un pack `FS` (firmware v2.x) contient des images BMP 4 bits encodées en RLE et de l'audio MP3
+  (mono, 44100 Hz).
+
+Les fichiers qui ne sont pas déjà dans la forme attendue sont convertis au moment de préparer le
+transfert. Cela ne concerne pas que les formats compressés : vers un pack `FS`, un BMP 24 bits est
+ré-encodé en BMP 4 bits/RLE, et un MP3 qui n'est pas mono/44100 Hz est ré-encodé lui aussi (un MP3
+conservé tel quel voit ses tags ID3 retirés).
+
+À l'inverse, sur le chemin `Raw`, un BMP ou un WAVE est écrit tel qu'il se présente, sans que sa
+profondeur de bits ni ses paramètres d'échantillonnage soient vérifiés. Respecter les contraintes
+listées plus haut vous revient donc ; ce n'est pas la conversion qui le fera.
 
 #### Wiki
 
