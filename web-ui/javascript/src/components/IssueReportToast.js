@@ -140,7 +140,7 @@ class IssueReportToast extends React.Component {
             .replace(/__BROWSER/g, encodeURIComponent(window.navigator.userAgent))
             .replace(/__APP_VERSION/g, this.props.evergreen.version || 'Unknown');
 
-        this.url = `https://github.com/marian-m12l/studio/issues/new?template=bug_report_${i18n.language}.md&body=${body}`;
+        this.url = `https://github.com/antoinevalentinHA/studio/issues/new?template=bug_report_${i18n.language}.md&body=${body}`;
 
         return (
             <>
