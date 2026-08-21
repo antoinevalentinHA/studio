@@ -135,12 +135,12 @@ class DatabaseMetadataServiceResourceTest {
     void writtenMetadataSurvivesARoundTrip() {
         DatabaseMetadataService service = new DatabaseMetadataService(true);
 
-        service.refreshUnofficialMetadata(metadata("Cornebidouille"));
+        service.refreshUnofficialMetadata(metadata("Personal Pack"));
         Optional<DatabasePackMetadata> read = service.getUnofficialMetadata(UUID_UNDER_TEST);
 
         assertTrue(read.isPresent(), "the pack that was just written must be found");
         assertEquals(UUID_UNDER_TEST, read.get().getUuid());
-        assertEquals("Cornebidouille", read.get().getTitle());
+        assertEquals("Personal Pack", read.get().getTitle());
         assertEquals("A description", read.get().getDescription());
         assertEquals("data:image/png;base64,AAAA", read.get().getThumbnail());
         assertFalse(read.get().isOfficial(), "a pack from the unofficial database is not official");

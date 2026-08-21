@@ -85,7 +85,7 @@ class ConversionProvenanceStoreTest {
     @Test
     @DisplayName("a record comes back exactly as it was filed")
     void recordSurvivesARoundTrip() {
-        ConversionRecord written = new ConversionRecord("Cornebidouille.zip",
+        ConversionRecord written = new ConversionRecord("personal-pack.zip",
                 ConversionRecord.Kind.FILE, "a".repeat(64),
                 ConversionRecord.Kind.TREE, "b".repeat(64), 123456789L, 1_700_000_000_000L,
                 "fs", "0.4.3-TEST");
@@ -93,7 +93,7 @@ class ConversionProvenanceStoreTest {
         assertTrue(store.record("u.converted_1", written));
 
         ConversionRecord read = require(store.find("u.converted_1"));
-        assertEquals("Cornebidouille.zip", read.getSourceName());
+        assertEquals("personal-pack.zip", read.getSourceName());
         assertEquals(ConversionRecord.Kind.FILE, read.getSourceKind());
         assertEquals("a".repeat(64), read.getSourceSha256());
         assertEquals(ConversionRecord.Kind.TREE, read.getArtifactKind());

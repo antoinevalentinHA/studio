@@ -43,7 +43,7 @@ describe('isConversionOutput', () => {
     it('does not recognise a pack the user put in the library', () => {
         expect(isConversionOutput(pack('archive', 'u.zip', 1))).toBe(false);
         expect(isConversionOutput(pack('raw', 'u.pack', 1))).toBe(false);
-        expect(isConversionOutput(pack('fs', 'Lucky Luke', 1))).toBe(false);
+        expect(isConversionOutput(pack('fs', 'Personal Pack', 1))).toBe(false);
     });
 
     it('does not fire on the substring appearing somewhere else in the name', () => {
