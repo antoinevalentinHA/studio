@@ -66,7 +66,7 @@ l'historique des commits.
 - Des tests de caractérisation et de spécification couvrant les métadonnées, l'index, la détection et
   le chemin d'écriture.
 - Une suite FAT32 optionnelle, exercée à la main sur un volume jetable — voir `TESTING.md`.
-- Trois sessions documentées d'opérations sur appareil réel, sur deux appareils — voir
+- Quatre sessions documentées d'opérations sur appareil réel, sur deux appareils — voir
   `FIELD-VALIDATION.md`.
 
 ## État actuel
@@ -111,7 +111,7 @@ Deux réserves à connaître avant de lire quoi que ce soit dans ces nombres :
 
 - **L'intégration continue n'exerce jamais FAT32.** Un exécuteur hébergé n'a pas de tel volume : les
   tests optionnels y sont ignorés et sont validés à la main sur un VHD jetable.
-- Les résultats de terrain proviennent de trois sessions, une machine, deux appareils. Ils ne se
+- Les résultats de terrain proviennent de quatre sessions, une machine, deux appareils. Ils ne se
   généralisent pas à d'autres révisions de micrologiciel, d'autres cartes ou d'autres versions de
   Windows.
 

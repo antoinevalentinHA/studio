@@ -6,7 +6,7 @@ complements them.
 
 ## Scope
 
-This file records **three sessions**, on different builds.
+This file records **four sessions**, on different builds.
 
 The first exercised `0.4.3-SNAPSHOT` carrying the five hardening changes merged as C1 to C5, i.e. the
 tree at commit `22e457d`. The host was a single Windows machine. Two story tellers were used. It
@@ -20,6 +20,10 @@ evidence of that code.
 The third exercised the same C6 write path again, this time on **both** devices, and is recorded
 under *Second C6 field session — a second device and three more writes*.
 
+The fourth ran the **released commit**, `0.4.3-fork.1` at `45e3a55`, on one device, and is the first
+to exercise the provenance check on real hardware. It is recorded under *Fourth session — the
+provenance check on real hardware*.
+
 These are field observations. They complement the automated tests; they do not replace them, and
 they do not generalise. Nothing here has been verified across other firmware revisions, other
 Windows versions, other SD cards or other machines, and the sample is two devices on one firmware
@@ -31,8 +35,8 @@ Where a fact below is an observation rather than a demonstrated property, it say
 
 | Device | Serial | Notes |
 | --- | --- | --- |
-| A | `40024040004586` | first session: four packs written and read back; also the device involved in the incident described below. Second session: the only device exercised. Third session: two more adds |
-| B | `23424040008282` | first session: one pack written and read back. Not exercised in the second session. **Third session: written to under the C6 write path** |
+| A | `40024040004586` | first session: four packs written and read back; also the device involved in the incident described below. Second session: the only device exercised. Third session: two more adds. **Fourth session: nine adds and three same-UUID replacements** |
+| B | `23424040008282` | first session: one pack written and read back. Not exercised in the second session. **Third session: written to under the C6 write path.** Not exercised in the fourth |
 
 Serial numbers are recorded because the read-only preflight below checks them, and because the
 incident timeline is tied to one specific device.
@@ -311,9 +315,14 @@ produced from, and modification times do not answer that question. Same UUID doe
 content, and nothing in the library proved otherwise.
 
 C7-1 removed the silence, not the uncertainty. Establishing that a given conversion was produced from
-a given source is still an open problem, and this session is a concrete argument for solving it: the
-same pack distributed to several devices is an ordinary thing to want, and it is exactly the case
-where a reusable cache is both correct and, today, unprovable.
+a given source was still an open problem at the time of this session, and this session was a concrete
+argument for solving it: the same pack distributed to several devices is an ordinary thing to want,
+and it was exactly the case where a reusable cache is both correct and unprovable.
+
+**It has been solved since, for conversions made after the work landed.** A conversion now records
+what it was made from, and both artefacts are re-read and compared before it is reused. The fourth
+session exercised that on a device — see *Fourth session — the provenance check on real hardware*.
+A conversion made before the recording existed still carries no record, and is still unprovable.
 
 On method: the field report used the count of re-encoding lines in the driver log to tell a fresh
 conversion from a reused one — eight for the transfer to B, none for the transfer to A. Their
@@ -337,6 +346,105 @@ not.
 - Nothing here generalises to other firmware revisions, other hardware revisions, other cards, other
   hosts or other Windows versions.
 
+## Fourth session — the provenance check on real hardware
+
+The first session to run the **released commit**, and the first to exercise the provenance work end
+to end on a device. What it adds over the three before it is one thing: STUdio was made to compare a
+converted pack against the source it was supposedly made from, on real hardware, and it **proved they
+differed** rather than merely admitting it could not tell.
+
+### Runtime, host, device
+
+- Version `0.4.3-fork.1`, **commit `45e3a55`**, working tree clean.
+- **A local rebuild of that commit**, not the published archive. Same tree as the CI-built asset
+  attached to the pre-release; different binary, since a build stamps its own timestamp.
+- Host: a single Windows machine. Device **A**, firmware `3.3`. Device **B was not exercised** — its
+  last write remains the third session.
+
+On identifying a build: `0.4.3-fork.1` does **not** name one. The version is fixed rather than a
+snapshot, so `master` kept declaring it after moving past `45e3a55`; any build from a later tree
+reports the released version without being the released tree. A field report therefore has to give
+the **commit**, and say whether the runtime was the published asset or a local rebuild.
+
+### What was exercised
+
+Two paths, in order.
+
+**Nine adds**, each a UUID the device had not seen. Index `.pi` **33 → 42**, every added UUID present
+and unique on re-read, nine `Pack added.`, no incident. None of the nine had a conversion in the
+library beforehand, so all nine converted fresh and none raised a question — which is what should
+happen.
+
+**Three same-UUID replacements**, on packs whose content had genuinely changed since their first
+conversion: one audio asset replaced, another left alone. Three packs, designated neutrally and
+identified by the leading bytes of their UUIDs:
+
+| Pack | UUID prefix | Delete | Verdict shown | Rewrite |
+| --- | --- | --- | --- | --- |
+| personal pack 5 | `18fce021` | 42 → 41 | MISMATCH | 41 → 42 |
+| personal pack 6 | `53c560ca` | 42 → 41 | MISMATCH | 41 → 42 |
+| personal pack 7 | `a9da502d` | 42 → 41 | MISMATCH | 41 → 42 |
+
+Final state: **42 packs**, every UUID present and unique, the packs not involved untouched, and over
+the whole window **no `INVALID_STATE_ERR`, no libusb error, no HTTP 500**. Safe eject succeeded.
+
+### Deleting first is the hardening, not an obstacle
+
+A replacement had to be done as *delete from the device, then transfer again*. That is the
+consequence of refusing a pre-existing `.content` folder: STUdio will not write into a folder it did
+not create, so overwriting in place is no longer available. It is the intended behaviour observed
+from the outside, and this is its first field observation.
+
+### The verdict, and how it was read
+
+Each of the three drops opened the dialog **and said which of its two answers it was giving**. The
+wording seen was the one shown only when the check ran and found a difference:
+
+> STUdio **has checked it**: it was not made from the pack the library holds now, so it would not
+> send what you have.
+
+Not the wording used when nothing could be established, which says instead that STUdio **cannot
+check** that it was produced from the pack the library holds now, *so it may not match*.
+
+That distinction is the whole point, and it is legible on screen without reading a log:
+
+| What the dialog says | What it means |
+| --- | --- |
+| *cannot check … so it may not match* | nothing was established |
+| *has checked it: it was not made from* | both artefacts were read, and they differ |
+
+So the full chain ran: provenance **recorded** at the first conversion, source and converted artefact
+**re-read and re-hashed** at transfer time, and a **difference proven**. Choosing *re-convert*
+produced a fresh conversion each time, and of the two audio assets re-encoded, one hashed differently
+from before — the one that had been changed — and one did not. Reusing the cached instance would have
+sent the wrong content here, and the dialog made that explicit instead of leaving it to be discovered
+on the device.
+
+**This is the first field evidence that the provenance check works**, as opposed to the earlier
+sessions, which only ever showed that reuse *could* be correct and that timestamps could not
+establish it.
+
+On method: counting re-encoding lines in the driver log is still a `FINE`-level oracle and is used
+here only to corroborate the on-screen verdict and the new conversion folder, never on its own. The
+index count and UUID uniqueness remain readable whatever the log level, and
+`POST /api/library/verify-conversion` answers the same question independently of logging — it was not
+used in this session.
+
+### Limits
+
+- **One device, one firmware revision (`3.3`), one host, one session.** Device B was not exercised.
+- **The runtime was a local rebuild**, not the published archive. Same tree, different binary.
+- Only one of the three verdicts was produced. A **match** — convert once, change nothing, transfer
+  again, expecting no question at all — was **not exercised**, and it is the case that would show the
+  check does not raise false questions. Neither was the **unknown** case, nor the dialog's option to
+  send the cached instance anyway; *re-convert* was chosen every time.
+- No interruption was attempted during an `ATOMIC_MOVE` or a copy. No unsafe disconnection, no power
+  loss. **No physical crash-safety is demonstrated**, and a clean eject remains the last line of
+  defence.
+- On tooling: `Get-Volume` still reported the volume for a few seconds after a successful eject. It
+  is not a reliable oracle for "still mounted", and a positive result there should not be read as an
+  eject having failed.
+
 ## Remaining integrity gap
 
 The C1 to C5 field results concern detection, transfer tracking, handle lifecycle and libusb
@@ -350,24 +458,24 @@ temporary that is created exclusively and cleaned up on failure, synchronised wi
 installed by a single atomic move with no fallback to the previous non-atomic copy. The free-space
 precheck and the index parsing were hardened too. `TESTING.md` describes all of it.
 
-That code **has now been exercised on two devices**, across the two C6 sessions recorded above. What
-each kind of evidence covers:
+That code **has now been exercised on two devices**, across the three sessions that followed the
+first. What each kind of evidence covers:
 
 | Kind of evidence | What it covers |
 | --- | --- |
 | Automated tests | NTFS on Linux and Windows, in CI |
 | Filesystem characterization | one disposable FAT32 VHD, run by hand, never in CI |
-| Field observation | the C1–C5 sessions, **and** two sessions exercising the reworked write path on **two devices**, both on firmware `3.3` from the same Windows host — adds on both, same-UUID replacements on device A, an additional pack topology played on both, index verified from the driver log throughout |
-| Not proven | what happens if power is lost or the device pulled mid-install; that anything reached the flash; any other firmware revision, hardware revision, card or host; the cause of the FAT incident; that a given converted instance was produced from a given source |
+| Field observation | the C1–C5 sessions, **and** three sessions exercising the reworked write path on **two devices**, all on firmware `3.3` from the same Windows host — adds on both, same-UUID replacements on device A, an additional pack topology played on both, index verified from the driver log throughout |
+| Not proven | what happens if power is lost or the device pulled mid-install; that anything reached the flash; any other firmware revision, hardware revision, card or host; the cause of the FAT incident; that a conversion made **before** provenance was recorded came from the source beside it |
 
 A VHD is not a story teller. It shares a filesystem format and nothing else: no firmware, no SD
 controller, no removable-media timing — so the characterization work and the field session remain
 different kinds of evidence and neither substitutes for the other.
 
 The field sessions move one thing, and precisely one: **whether this code has run against real
-hardware**. It has — on two devices now, across two sessions, and the operations completed. That is a
+hardware**. It has — on two devices, across three sessions, and the operations completed. That is a
 larger sample, not a different kind of evidence: it does not move anything about interruption,
-durability or generalisation, none of which either session tested.
+durability or generalisation, none of which any session tested.
 
 ### What is still open
 
@@ -377,8 +485,9 @@ durability or generalisation, none of which either session tested.
 - Nothing detects or reports partial states on a device at connection time.
 - Firmware behaviour remains unknown: how a device reacts to a stray `.pi.new`, to a visible `.pi`,
   or to an index whose size is not a multiple of 16 is not documented anywhere here.
-- Nothing establishes that a converted instance in the local library was produced from the source
-  that now sits beside it. C7-1 stopped STUdio from assuming it; it did not make it knowable.
+- A conversion made **before** provenance was recorded still cannot be tied to the source beside it.
+  For those, C7-1's refusal to assume is all there is. Conversions made since carry a record and are
+  checked against it, which the fourth session exercised on a device.
 
 No conclusion about resilience to interruption or to power loss should be drawn from the field
 results recorded in this document, nor from the filesystem work that followed them.

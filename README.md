@@ -60,7 +60,7 @@ history.
 - A CI workflow running the Java suite on Linux and Windows, plus the JavaScript suite.
 - Characterization and specification tests covering the metadata, index, detection and write paths.
 - An opt-in FAT32 suite, exercised by hand on a disposable volume — see `TESTING.md`.
-- Three documented sessions of real device operations, on two devices — see `FIELD-VALIDATION.md`.
+- Four documented sessions of real device operations, on two devices — see `FIELD-VALIDATION.md`.
 
 ## Current status
 
@@ -99,7 +99,7 @@ Two caveats worth knowing before reading anything into any of those numbers:
 
 - **CI never exercises FAT32.** A hosted runner has no such volume, so the opt-in tests skip there
   and are validated by hand on a disposable VHD instead.
-- Field results come from three sessions, one machine, two devices. They do not generalise to other
+- Field results come from four sessions, one machine, two devices. They do not generalise to other
   firmware revisions, other cards or other Windows versions.
 
 `TESTING.md` describes how to run everything, what is covered, and what is deliberately not.
