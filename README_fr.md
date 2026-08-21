@@ -119,13 +119,23 @@ Deux réserves à connaître avant de lire quoi que ce soit dans ces nombres :
 
 ## Pour commencer
 
-Il n'existe **encore ni release ni tag pour ce fork**. Le lien de téléchargement des instructions
-amont ci-dessous pointe vers la construction d'upstream, qui ne contient **aucune** des modifications
-décrites ici.
+La première pré-release publique de ce fork est disponible sous la version
+[`0.4.3-fork.1`](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1). C'est une
+**pré-release** : elle est publiée pour élargir la validation au-delà des appareils utilisés pendant
+le développement, non parce que le travail serait terminé. Lisez d'abord *État actuel* et *Limites*
+ci-dessus.
 
-**Construire depuis les sources est aujourd'hui le seul moyen d'utiliser ce fork.** Les prérequis
-amont s'appliquent sans changement — Java JDK 11+ pour l'exécuter, Maven 3+ pour le construire — mais
-clonez **ce** dépôt-ci et non celui qui est nommé dans *Pour les développeurs* :
+Le lien de téléchargement des instructions amont ci-dessous pointe toujours vers la construction
+d'upstream, qui ne contient **aucune** des modifications décrites ici.
+
+**Télécharger la pré-release.** Prenez `studio-web-ui-0.4.3-fork.1-dist.zip` dans
+[cette release](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1),
+décompressez-la, puis lancez le script de démarrage correspondant à votre plate-forme. Les prérequis
+et le reste de la procédure sont ceux d'amont, décrits sous *Utilisation* ci-dessous.
+
+**Ou construire depuis les sources.** Les prérequis amont s'appliquent sans changement — Java JDK 11+
+pour l'exécuter, Maven 3+ pour le construire — mais clonez **ce** dépôt-ci et non celui qui est nommé
+dans *Pour les développeurs* :
 
 ```
 git clone https://github.com/antoinevalentinHA/studio.git
@@ -133,10 +143,7 @@ cd studio
 mvn clean install
 ```
 
-Cela produit l'**archive de distribution** dans `web-ui/target/` ; décompressez-la et lancez le script
-de démarrage correspondant à votre plate-forme, comme le décrivent les instructions amont.
-
-L'empaquetage d'une release pour ce fork n'est pas décidé.
+Cela produit la même **archive de distribution** dans `web-ui/target/`.
 
 ## Relation avec le projet amont
 
@@ -157,7 +164,8 @@ règle déterminant quel fichier est transféré, que ce fork a changée. Rien d
 [![Release amont](https://img.shields.io/github/v/release/marian-m12l/studio?label=release%20amont)](https://github.com/marian-m12l/studio/releases/latest)
 
 *Ce badge et les liens de téléchargement ci-dessous désignent les constructions **amont**, qui ne
-contiennent pas les changements de ce fork. Ce fork n'a pas encore de release propre — voir
+contiennent pas les changements de ce fork. La pré-release propre à ce fork est
+[`0.4.3-fork.1`](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1) — voir
 [Pour commencer](#pour-commencer).*
 
 > [!WARNING]
@@ -197,8 +205,9 @@ UTILISATION
 ### Installation
 
 * **Téléchargez** [la dernière release amont](https://github.com/marian-m12l/studio/releases/latest)
-— il s'agit de la construction d'upstream, qui ne contient pas les changements de ce fork ; il
-n'existe pas encore de release de ce fork —
+— il s'agit de la construction d'upstream, qui ne contient pas les changements de ce fork ; pour ce
+fork, prenez plutôt l'archive de
+[sa propre pré-release](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1) —
 (ou [construisez l'application](#pour-commencer)).
 * **Décompressez** l'archive de distribution
 * **Exécutez le script de lancement** : `studio-linux.sh`, `studio-macos.sh` ou `studio-windows.bat` selon votre
