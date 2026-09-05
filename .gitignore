@@ -4,3 +4,8 @@
 *target
 web-ui/javascript/build
 web-ui/javascript/report.*.json
+# log4j2 writes studio-latest.log and a dated roll-over beside the working directory. The
+# application has always done this when run from a checkout; a test that starts the HTTP server
+# now does it too, so a test run no longer leaves untracked files behind.
+studio-latest.log
+studio-*.log
