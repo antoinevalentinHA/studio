@@ -2,7 +2,7 @@ name: CI
 
 # Complements the `Nightly Build` workflow (maven.yml), which packages and publishes an artifact
 # from master. This one exists to give pull requests a verdict: it compiles every Java module and
-# runs the test suite on both Linux and Windows.
+# runs the Java suite on both Linux and Windows, and the JavaScript suite in a job of its own.
 #
 # Windows is not optional here. Several behaviours this project depends on — DOS file attributes,
 # whether a hidden file can be opened for writing, whether ATOMIC_MOVE is available — differ from
@@ -39,8 +39,9 @@ jobs:
 
       # The frontend goals are skipped on purpose: they download Node 12 and run `yarn install`,
       # which costs ~2.5 minutes per platform, needs the npm registry, and can rewrite the tracked
-      # yarn.lock. There is no JavaScript test suite to run, and skipping them still compiles every
-      # Java module, web-ui included. Packaging the real bundle stays the nightly build's job.
+      # yarn.lock. No coverage is lost by skipping them here: the JavaScript suite has its own job
+      # below, and this one still compiles every Java module, web-ui included. Packaging the real
+      # bundle stays the nightly build's job.
       - name: Build and test
         shell: bash
         run: mvn -B -Dskip.installnodeyarn=true -Dskip.yarn=true test
