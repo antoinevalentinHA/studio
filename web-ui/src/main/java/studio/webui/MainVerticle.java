@@ -42,16 +42,18 @@ public class MainVerticle extends AbstractVerticle {
      * CORS filter below does not cover it: CORS is enforced by browsers, on requests issued by a
      * page, and says nothing to {@code curl} or a script on another machine.
      *
-     * <p>Nothing is lost by restricting it, because remote use was never possible. The web UI is
-     * served by this same server and addresses it as {@code http://localhost:8080}, hardcoded
-     * throughout the frontend, so a browser on another machine would receive the page and then send
-     * every request to its own loopback. The wider binding exposed the API without ever making the
-     * application usable from elsewhere.
+     * <p>Nothing is lost by restricting it. When this was written the web UI addressed the server as
+     * {@code http://localhost:8080}, hardcoded throughout the frontend, so a browser on another
+     * machine would receive the page and then send every request to its own loopback: the wider
+     * binding exposed the API without ever making the application usable from elsewhere. That is no
+     * longer the reason, because the frontend now uses relative addresses and follows whatever
+     * origin served it — remote use would work if this bound wider.
      *
-     * <p>Deliberately fixed and not a setting. An override would keep the exposure reachable to buy
-     * back a capability that does not work, and the day remote access is genuinely wanted it will
-     * mean changing the frontend's addresses too — which is when this decision should be revisited,
-     * not before.
+     * <p>Deliberately fixed and not a setting, and the argument for that is now the plainer one: the
+     * API below has no authentication, so a binding reachable from the network hands it to anyone on
+     * the segment. Remote access is no longer blocked by the frontend, so the day it is genuinely
+     * wanted this becomes a real decision — one about authenticating the API, not about widening a
+     * socket. Until someone makes it, the loopback stays.
      *
      * <p>A method rather than a {@code static final String}, so that the test which asserts this can
      * read it. A compile-time constant is inlined into whatever reads it, and a test holding an
@@ -130,7 +132,6 @@ public class MainVerticle extends AbstractVerticle {
 
         // Start HTTP server
         vertx.createHttpServer().requestHandler(router).listen(LISTEN_PORT, listenHost());
-
         // Automatically open URL in browser, unless instructed otherwise
         String openBrowser = System.getProperty("studio.open", "true");
         if (Boolean.valueOf(openBrowser)) {

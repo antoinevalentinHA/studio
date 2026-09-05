@@ -75,7 +75,7 @@ Nothing here touches a device. Fixtures are synthesised in code; no device data 
 
 | Suite | Tests |
 | --- | --- |
-| Java, standard | **284**, 14 skipped — the opt-in FAT32 classes, and two link cases each of which only one platform can set up. A third conditional case, the non-loopback binding check, skips only on a machine with no routable address |
+| Java, standard | **286**, 14 skipped — the opt-in FAT32 classes, and two link cases each of which only one platform can set up. A third conditional case, the non-loopback binding check, skips only on a machine with no routable address |
 | Java, with `-Dstudio.test.fat32.root=<volume>` | last measured at **172** before the C6d-5 additions; not re-measured since, because it needs the volume mounted |
 | JavaScript | **57** |
 
@@ -122,6 +122,7 @@ counts.
 | Where a library operation may reach: direct children only, links refused, nominal cases intact | `LibraryPathConfinementTest` | `web-ui` module; **specifications** — converted from characterization once the confinement existed. The symbolic-link case is Linux-only and the junction case Windows-only |
 | A conversion releases its source and its temporary even when the reader or writer throws | `ConversionStreamLifecycleTest` | `web-ui` module; **specifications** — asserts the consequence by deleting the work folder, so the three failure cases are Windows-only |
 | Where the HTTP server can be reached from: the loopback answers, another address of this machine does not | `HttpServerBindingTest` | `web-ui` module; **specifications** — opens real sockets against a real server rather than reading the constant back. The refusal case needs a non-loopback address to aim at and skips where there is none |
+| Same, but on the deployed application rather than a bare server | `ServerBindingTest` | `web-ui` module; **specifications** — deploys the real `MainVerticle`, so it proves `start()` uses the address rather than that the address works. It binds the fixed `LISTEN_PORT`, so both cases skip when that port is already taken; `HttpServerBindingTest` is the one that runs unconditionally |
 
 Web UI (`web-ui/javascript`, run by yarn):
 
