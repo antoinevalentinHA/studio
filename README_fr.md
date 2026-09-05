@@ -102,7 +102,7 @@ Utilisez le protocole opératoire de `FIELD-VALIDATION.md` si vous écrivez sur 
 
 ## Tests
 
-À l'heure où ces lignes sont écrites : **282 tests Java** dans la suite standard et **57 tests
+À l'heure où ces lignes sont écrites : **284 tests Java** dans la suite standard et **57 tests
 JavaScript**, tous verts, sur Linux comme sur Windows. `TESTING.md` porte les comptes à jour, le
 chiffre de la suite FAT32 optionnelle et ses réserves, et fait autorité — les nombres cités ici se
 périmeront avant lui.

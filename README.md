@@ -91,7 +91,7 @@ Use the operational protocol in `FIELD-VALIDATION.md` if you are writing to a re
 
 ## Testing
 
-At the time of writing: **282 Java tests** in the standard suite and **57 JavaScript tests**, all
+At the time of writing: **284 Java tests** in the standard suite and **57 JavaScript tests**, all
 green, on Linux and on Windows. `TESTING.md` holds the current counts, the opt-in FAT32 figure and
 its caveats, and is the authority — the numbers here will go stale before it does.
 

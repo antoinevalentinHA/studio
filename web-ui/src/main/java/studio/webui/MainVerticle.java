@@ -33,6 +33,37 @@ import java.util.Set;
 
 public class MainVerticle extends AbstractVerticle {
 
+    /**
+     * The address the HTTP server binds to: the loopback, and only the loopback.
+     *
+     * <p>Named rather than left to {@code listen(int)}, whose default is {@code 0.0.0.0} — every
+     * interface. That default put an API with no authentication on the local network, where anything
+     * on the same segment could read, write and delete in the user's library while STUdio ran. The
+     * CORS filter below does not cover it: CORS is enforced by browsers, on requests issued by a
+     * page, and says nothing to {@code curl} or a script on another machine.
+     *
+     * <p>Nothing is lost by restricting it, because remote use was never possible. The web UI is
+     * served by this same server and addresses it as {@code http://localhost:8080}, hardcoded
+     * throughout the frontend, so a browser on another machine would receive the page and then send
+     * every request to its own loopback. The wider binding exposed the API without ever making the
+     * application usable from elsewhere.
+     *
+     * <p>Deliberately fixed and not a setting. An override would keep the exposure reachable to buy
+     * back a capability that does not work, and the day remote access is genuinely wanted it will
+     * mean changing the frontend's addresses too — which is when this decision should be revisited,
+     * not before.
+     *
+     * <p>A method rather than a {@code static final String}, so that the test which asserts this can
+     * read it. A compile-time constant is inlined into whatever reads it, and a test holding an
+     * inlined copy would go on binding to the address it was compiled against — passing while
+     * production had been changed under it. That is precisely the regression this must catch.
+     */
+    static String listenHost() {
+        return "127.0.0.1";
+    }
+
+    static final int LISTEN_PORT = 8080;
+
     private final Logger LOGGER = LoggerFactory.getLogger(MainVerticle.class);
 
     private DatabaseMetadataService databaseMetadataService;
@@ -98,7 +129,7 @@ public class MainVerticle extends AbstractVerticle {
         });
 
         // Start HTTP server
-        vertx.createHttpServer().requestHandler(router).listen(8080);
+        vertx.createHttpServer().requestHandler(router).listen(LISTEN_PORT, listenHost());
 
         // Automatically open URL in browser, unless instructed otherwise
         String openBrowser = System.getProperty("studio.open", "true");
