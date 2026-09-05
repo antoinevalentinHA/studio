@@ -75,7 +75,7 @@ Nothing here touches a device. Fixtures are synthesised in code; no device data 
 
 | Suite | Tests |
 | --- | --- |
-| Java, standard | **286**, 14 skipped — the opt-in FAT32 classes, and two link cases each of which only one platform can set up. A third conditional case, the non-loopback binding check, skips only on a machine with no routable address |
+| Java, standard | **309**, 14 skipped — the opt-in FAT32 classes, and two link cases each of which only one platform can set up. A third conditional case, the non-loopback binding check, skips only on a machine with no routable address |
 | Java, with `-Dstudio.test.fat32.root=<volume>` | last measured at **172** before the C6d-5 additions; not re-measured since, because it needs the volume mounted |
 | JavaScript | **57** |
 
@@ -91,6 +91,10 @@ counts.
 | Area | Test class | Notes |
 | --- | --- | --- |
 | Endianness helpers used for the V3 AES key | `BytesUtilsCharacterizationTest` | core module |
+| What a raw binary pack keeps across a write and a read back, and what it does not | `BinaryPackRoundTripTest` | `core` module; specifications and characterization together. The `KNOWN GAP` cases are the pack uuid, asset names, sector padding, and an option pointing at the first stage node |
+| The same for the archive format, where the two differ | `ArchivePackRoundTripTest` | `core` module; asset bytes and option lists survive here but the pack uuid does not, for the same reason |
+| Packs synthesised in code for both of the above | `PackFixtures` | `core` module; support only, asserts nothing. No device data, no third-party content |
+| The XXTEA round trip, its boundaries, and a fixed vector | `XXTEACipherTest` | `core` module; **specifications** — every ciphered device transfer goes through this and nothing exercised it. One `KNOWN GAP`: a one-word block passes through in clear |
 | UUID → `.content` folder name | `PackFolderNamingCharacterizationTest` | includes the driver/core duplication cross-check |
 | V2 and V3 transfer ciphering, file selection | `CipherUtilsCharacterizationTest` | |
 | `.md` parsing, version dispatch, key derivation, stream lifecycle | `DeviceMetadataCharacterizationTest` | 4 handle-lifecycle cases are Windows-only |
