@@ -16,6 +16,13 @@ deciding whether it fits your use.
 Grouped by area rather than listed change by change. The detail is in `TESTING.md` and the commit
 history.
 
+**Web server**
+
+- The frontend no longer names a host or a port. Every call was written against
+  `http://localhost:8080`, in twenty places; they are relative now, so the UI addresses whatever
+  origin served it. The event bus is the exception — sockjs-client rejects a URL with no host and
+  no protocol — so it derives an absolute URL from the page's own origin.
+
 **Device and transport**
 
 - The partition search waits for the OS to mount the device instead of giving up after ten seconds,
@@ -136,6 +143,21 @@ Based on STUdio by [@marian-m12l](https://github.com/marian-m12l), whose reverse
 this exists on top of. Licence, attribution and disclaimers are unchanged and reproduced below. The
 fork can be rebased on upstream if it becomes active again; until then the changes above are
 maintained here.
+
+## Code from other forks
+
+Parts of this fork come from other people's forks rather than from upstream. They are listed here
+because the licence alone does not say who did the work.
+
+**A frontend that does not name its own address** — from [@kairoh](https://github.com/kairoh)'s
+fork, commit
+[`74f53cc`](https://github.com/kairoh/studio/commit/74f53cc57b70734e015f0cd31f036ca57ff3ea47)
+("Configurable listen host and port", 2 April 2022), which predates that fork's move to Quarkus and
+so applied to the same Vert.x code this fork still runs. Taken from it: serving the whole web UI
+from relative URLs, so the frontend stops hard-coding the address it is served from. Not taken from
+it: making the listen address configurable, which this fork deliberately does not do — see
+`MainVerticle.listenHost()` for why — nor binding to the loopback, which that commit does not do
+either, since it keeps `listen(port)`. Both projects are MPL-2.0.
 
 ---
 

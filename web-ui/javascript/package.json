@@ -6,6 +6,7 @@
   "author": "Marian MULLER REBEYROL",
   "license": "MPL-2.0",
   "private": true,
+  "proxy": "http://localhost:8080",
   "dependencies": {
     "@emotion/core": "^10.0.22",
     "@emotion/styled": "^10.0.23",

@@ -65,8 +65,14 @@ class App extends React.Component {
         // from inside a setState callback, one React tick later; the underlying client fires onopen
         // at most once and only if it is already assigned, so a socket that opened during that tick
         // left the application with no device handlers at all for the lifetime of the page.
+        //
+        // Derived from the page's own origin rather than relative, unlike the `fetch` calls in
+        // `services/`: sockjs-client rejects a URL with no host and no protocol (sockjs.js, "The
+        // URL '...' is invalid"), so '/eventbus' would throw at construction. The origin still
+        // follows whatever host and port served the page, which is the point.
         console.log("Setting up vert.x event bus channel...");
-        const channel = createEventBusChannel('http://localhost:8080/eventbus', {
+        const eventBusOrigin = process.env.REACT_APP_EVENTBUS_ORIGIN || window.location.origin;
+        const channel = createEventBusChannel(eventBusOrigin + '/eventbus', {
             onStateChange: state => this.onChannelStateChange(state)
         });
 
