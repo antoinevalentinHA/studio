@@ -49,11 +49,20 @@ public class MainVerticle extends AbstractVerticle {
      * longer the reason, because the frontend now uses relative addresses and follows whatever
      * origin served it — remote use would work if this bound wider.
      *
-     * <p>Deliberately fixed and not a setting, and the argument for that is now the plainer one: the
-     * API below has no authentication, so a binding reachable from the network hands it to anyone on
-     * the segment. Remote access is no longer blocked by the frontend, so the day it is genuinely
-     * wanted this becomes a real decision — one about authenticating the API, not about widening a
-     * socket. Until someone makes it, the loopback stays.
+     * <p>Deliberately fixed and not a setting. The rule is not that authentication has to live inside
+     * STUdio; it is that an unauthenticated STUdio socket must not become directly reachable from the
+     * network. STUdio may sit behind authentication it does not provide — its own listener stays
+     * unreachable except from this host.
+     *
+     * <p>That distinction is what decides the cases, and it is worth keeping because it decides them
+     * differently. An authenticating proxy on this same machine satisfies the rule: it reaches the
+     * loopback, and nothing here has to become configurable. A proxy on another machine does not,
+     * however well it authenticates: the hop to STUdio would be unauthenticated and in the clear, so
+     * anything able to reach this port bypasses the proxy entirely, and the safety would rest on a
+     * firewall rule this application neither owns nor verifies. Safety an application cannot check is
+     * not safety it can claim. Until the API authenticates, the loopback stays.
+     *
+     * <p>Worked out in issue #45 and recorded here rather than left in that thread.
      *
      * <p>A method rather than a {@code static final String}, so that the test which asserts this can
      * read it. A compile-time constant is inlined into whatever reads it, and a test holding an
