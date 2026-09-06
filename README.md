@@ -98,7 +98,7 @@ Use the operational protocol in `FIELD-VALIDATION.md` if you are writing to a re
 
 ## Testing
 
-At the time of writing: **284 Java tests** in the standard suite and **57 JavaScript tests**, all
+At the time of writing: **289 Java tests** in the standard suite and **57 JavaScript tests**, all
 green, on Linux and on Windows. `TESTING.md` holds the current counts, the opt-in FAT32 figure and
 its caveats, and is the authority — the numbers here will go stale before it does.
 
@@ -113,16 +113,16 @@ Two caveats worth knowing before reading anything into any of those numbers:
 
 ## Getting started
 
-The first public pre-release of this fork is available as
-[`0.4.3-fork.1`](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1). It is a
+The current public pre-release of this fork is
+[`0.4.3-fork.2`](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.2). It is a
 **pre-release**: published to widen validation beyond the devices used during development, not
 because the work is finished. Read *Current status* and *Limitations* above first.
 
 The download link in the upstream instructions below still points at upstream's own build, which
 does **not** contain any of the changes described here.
 
-**Download the pre-release.** Take `studio-web-ui-0.4.3-fork.1-dist.zip` from
-[that release](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1), unzip it, and
+**Download the pre-release.** Take `studio-web-ui-0.4.3-fork.2-dist.zip` from
+[that release](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.2), unzip it, and
 run the launcher script for your platform. The prerequisites and the rest of the procedure are the
 upstream ones, described under *Usage* below.
 
@@ -174,7 +174,7 @@ text described markers no longer present. Nothing else in it is edited.
 
 *This badge and the download links below refer to **upstream** builds, which do not include this
 fork's changes. This fork's own pre-release is
-[`0.4.3-fork.1`](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1) — see
+[`0.4.3-fork.2`](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.2) — see
 [Getting started](#getting-started).*
 
 > [!WARNING]
@@ -215,7 +215,7 @@ USAGE
 
 * **Download** [the latest upstream release](https://github.com/marian-m12l/studio/releases/latest)
 — this is upstream's build and does not contain this fork's changes; for this fork, take the archive
-from [its own pre-release](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1)
+from [its own pre-release](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.2)
 instead —
 (alternatively, you can [build the application](#for-developers)).
 * **Unzip** the distribution archive
