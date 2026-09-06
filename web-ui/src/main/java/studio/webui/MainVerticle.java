@@ -128,7 +128,19 @@ public class MainVerticle extends AbstractVerticle {
         // Rest API
         router.mountSubRouter("/api", apiRouter());
 
-        // Static resources (/webroot)
+        // Static resources (/webroot), behind a check on what the path is allowed to contain
+        router.route().handler(context -> {
+            String path = context.normalisedPath();
+            if (isServableStaticPath(path)) {
+                context.next();
+            } else {
+                // Answered here rather than failed, so the failure handler does not log an exception
+                // that does not exist. 404 rather than 400: a refusal should not confirm anything
+                // about what is or is not behind the web root.
+                LOGGER.warn("Refusing a static path that is not a plain web-root path: " + path);
+                context.response().setStatusCode(404).end();
+            }
+        });
         router.route().handler(StaticHandler.create().setCachingEnabled(false));
 
         // Error handler
@@ -191,5 +203,45 @@ public class MainVerticle extends AbstractVerticle {
 
     private boolean isDevMode() {
         return "dev".equalsIgnoreCase(System.getProperty("env", "prod"));
+    }
+
+    /**
+     * Whether a normalised request path may be handed to the static handler.
+     *
+     * <p>An allow list, and deliberately not a deny list. The bundled Vert.x-Web 3.9 normalises
+     * inconsistently — it collapses {@code ..} over {@code /} and decodes {@code %2e}, but leaves
+     * {@code %5c} and {@code %2f} encoded — so a backslash survives normalisation and, on Windows,
+     * is then a separator to the filesystem. Enumerating the encodings that survive would mean
+     * enumerating the ones *this version* happens to leave alone; a later Vert.x could change the
+     * set and the check would stop matching while still passing its tests. Naming what is allowed
+     * does not have that failure mode.
+     *
+     * <p>What is allowed is the unreserved set of RFC 3986 — letters, digits, {@code - . _ ~} — plus
+     * the separator. That is not a guess: it is the set the built bundle actually uses, and the
+     * tilde is in it because an asset is named {@code runtime~main.<hash>.js}. A percent sign is not,
+     * which is what refuses every encoded escape without naming any of them.
+     *
+     * <p>The {@code ..} segment check is redundant while normalisation collapses them, and kept
+     * because it costs nothing and does not depend on that staying true.
+     */
+    static boolean isServableStaticPath(String path) {
+        if (path == null || path.isEmpty() || path.charAt(0) != '/') {
+            return false;
+        }
+        for (int i = 0; i < path.length(); i++) {
+            char c = path.charAt(i);
+            boolean unreserved = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                    || (c >= '0' && c <= '9')
+                    || c == '-' || c == '.' || c == '_' || c == '~' || c == '/';
+            if (!unreserved) {
+                return false;
+            }
+        }
+        for (String segment : path.split("/")) {
+            if ("..".equals(segment)) {
+                return false;
+            }
+        }
+        return true;
     }
 }
