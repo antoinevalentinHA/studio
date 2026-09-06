@@ -102,7 +102,7 @@ Utilisez le protocole opératoire de `FIELD-VALIDATION.md` si vous écrivez sur 
 
 ## Tests
 
-À l'heure où ces lignes sont écrites : **284 tests Java** dans la suite standard et **57 tests
+À l'heure où ces lignes sont écrites : **289 tests Java** dans la suite standard et **57 tests
 JavaScript**, tous verts, sur Linux comme sur Windows. `TESTING.md` porte les comptes à jour, le
 chiffre de la suite FAT32 optionnelle et ses réserves, et fait autorité — les nombres cités ici se
 périmeront avant lui.
@@ -119,8 +119,8 @@ Deux réserves à connaître avant de lire quoi que ce soit dans ces nombres :
 
 ## Pour commencer
 
-La première pré-release publique de ce fork est disponible sous la version
-[`0.4.3-fork.1`](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1). C'est une
+La pré-release publique actuelle de ce fork est la version
+[`0.4.3-fork.2`](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.2). C'est une
 **pré-release** : elle est publiée pour élargir la validation au-delà des appareils utilisés pendant
 le développement, non parce que le travail serait terminé. Lisez d'abord *État actuel* et *Limites*
 ci-dessus.
@@ -128,8 +128,8 @@ ci-dessus.
 Le lien de téléchargement des instructions amont ci-dessous pointe toujours vers la construction
 d'upstream, qui ne contient **aucune** des modifications décrites ici.
 
-**Télécharger la pré-release.** Prenez `studio-web-ui-0.4.3-fork.1-dist.zip` dans
-[cette release](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1),
+**Télécharger la pré-release.** Prenez `studio-web-ui-0.4.3-fork.2-dist.zip` dans
+[cette release](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.2),
 décompressez-la, puis lancez le script de démarrage correspondant à votre plate-forme. Les prérequis
 et le reste de la procédure sont ceux d'amont, décrits sous *Utilisation* ci-dessous.
 
@@ -167,7 +167,7 @@ expliquait est restée, décrivant ainsi des marqueurs absents. Rien d'autre n'y
 
 *Ce badge et les liens de téléchargement ci-dessous désignent les constructions **amont**, qui ne
 contiennent pas les changements de ce fork. La pré-release propre à ce fork est
-[`0.4.3-fork.1`](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1) — voir
+[`0.4.3-fork.2`](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.2) — voir
 [Pour commencer](#pour-commencer).*
 
 > [!WARNING]
@@ -209,7 +209,7 @@ UTILISATION
 * **Téléchargez** [la dernière release amont](https://github.com/marian-m12l/studio/releases/latest)
 — il s'agit de la construction d'upstream, qui ne contient pas les changements de ce fork ; pour ce
 fork, prenez plutôt l'archive de
-[sa propre pré-release](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.1) —
+[sa propre pré-release](https://github.com/antoinevalentinHA/studio/releases/tag/0.4.3-fork.2) —
 (ou [construisez l'application](#pour-commencer)).
 * **Décompressez** l'archive de distribution
 * **Exécutez le script de lancement** : `studio-linux.sh`, `studio-macos.sh` ou `studio-windows.bat` selon votre
