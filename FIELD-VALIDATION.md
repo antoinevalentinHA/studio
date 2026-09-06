@@ -6,7 +6,7 @@ complements them.
 
 ## Scope
 
-This file records **four sessions**, on different builds.
+This file records **five sessions**, on different builds.
 
 The first exercised `0.4.3-SNAPSHOT` carrying the five hardening changes merged as C1 to C5, i.e. the
 tree at commit `22e457d`. The host was a single Windows machine. Two story tellers were used. It
@@ -23,6 +23,12 @@ under *Second C6 field session — a second device and three more writes*.
 The fourth ran the **released commit**, `0.4.3-fork.1` at `45e3a55`, on one device, and is the first
 to exercise the provenance check on real hardware. It is recorded under *Fourth session — the
 provenance check on real hardware*.
+
+The fifth ran `0.4.3-fork.2` at `2f65474`, on one device, and is the first to observe all three
+provenance verdicts — match, mismatch and unknown — on real hardware in a single sitting. A
+filesystem corruption also occurred during it, from causes outside the write path. It is recorded
+under *Fifth session — three provenance verdicts, and a filesystem corruption from outside the write
+path*.
 
 These are field observations. They complement the automated tests; they do not replace them, and
 they do not generalise. Nothing here has been verified across other firmware revisions, other
@@ -445,6 +451,100 @@ used in this session.
   is not a reliable oracle for "still mounted", and a positive result there should not be read as an
   eject having failed.
 
+## Fifth session — three provenance verdicts, and a filesystem corruption from outside the write path
+
+The fourth session showed one verdict, mismatch, and noted that a match and an unknown had not been
+seen. This session saw all three, in one sitting, across sixteen transfers — which completes that
+matrix on real hardware. It also suffered a filesystem corruption whose causes lie outside anything
+this fork changed, recorded below so the record is honest rather than because it is evidence about
+the write path.
+
+### Runtime, host, device
+
+- Version `0.4.3-fork.2`, **commit `2f65474`**, the tree this pre-release was cut from.
+- **A local rebuild of that commit**, made while the release was being published; same tree as the
+  CI-built asset, different binary. Not the published archive. As before: a version string does not
+  name a build, so the commit and the rebuild-versus-asset distinction are what pin it.
+- Host: a single Windows machine. Device **A**, firmware `3.3`. Device **B was not exercised**.
+- The device had been **factory-reset** after the corruption below, so it started from its 26
+  official packs with no personal UUID present. Every transfer was therefore an add.
+
+### What was exercised
+
+Sixteen transfers, index `.pi` **26 → 42**, sixteen `Pack added.`, `+1` verified each time. Each
+source had been re-mastered, and a `converted_*` from an earlier build was present in the library, so
+the provenance decision fired on every drop — that decision is taken library-side, between the source
+and its cached conversion, independently of the freshly-reset device. *Re-convert* was chosen every
+time, since the content had genuinely changed.
+
+What differed between the sixteen was **which build had produced the cached conversion**, and the
+verdict tracked exactly that. Packs are designated by the leading bytes of their UUIDs, with three
+graph shapes: `mono` (one story), `menu` (a multi-track wheel), `playlist` (auto-chained tracks).
+
+| Verdict | Count | UUID prefixes | Why |
+| --- | --- | --- | --- |
+| **MATCH** | 1 | `01c2790e` (mono) | cache produced this session from the current source — recorded and matching, so no question |
+| **MISMATCH** | 8 | `d0f67024` `18fce021` `53c560ca` `bbe60780` `47929ff6` `8fd57f29` `27567d1b` `a9da502d` (mono) | cache from a provenance-aware build the day before, source since changed — difference proven |
+| **UNKNOWN** | 7 | `efbe3bb9` `3d75e924` `8a07ebda` (mono), `73200563` `ff0e01e9` `f477924d` (menu), `fea112e9` (playlist) | cache from a build predating the provenance record — nothing to compare against |
+
+Over the whole window: **no `INVALID_STATE_ERR`, no libusb error, no HTTP 500, no `SEVERE`**. The one
+match transferred **without re-encoding** — the cache was reused, correctly, because it was proven to
+come from the current source. Each mismatch and unknown produced a fresh re-encoding and a new
+`converted_<ts>`. Three of the mismatch UUIDs (`18fce021`, `53c560ca`, `a9da502d`) are the packs the
+fourth session replaced; a day later, with the source changed again, they mismatched again.
+
+### What this adds
+
+The match is the case the fourth session lacked: it shows the check **does not raise a false
+question** — when the cache really was made from the source in hand, STUdio reused it silently and
+sent the right bytes. The unknown is the other missing case: a conversion with no provenance record
+is never assumed to match, and asks. So on a single user gesture the system answered match, mismatch
+or unknown according to the age and correspondence of the cache — the intended semantics, now seen
+end to end on hardware rather than only in tests.
+
+The on-screen wording remained the oracle, as in the fourth session: no dialog for the match, the
+*cannot check … so it may not match* wording for the unknowns, the *has checked it: it was not made
+from* wording for the mismatches. Asset hashes corroborated — fresh re-encodes on every mismatch and
+unknown, direct reuse on the match.
+
+### The filesystem corruption, and why it is not a write-path regression
+
+Three FAT corruptions occurred on device A the same day. Read-only signatures: `.md` at **0 bytes**
+(driver: *Unsupported device metadata format version: 0*), the `.content` directory gone, a broken
+directory entry with an unreadable name, `Get-Volume` reporting **Health Warning**.
+
+The causes are outside anything this fork writes, and are stated as the operator's own account rather
+than as inference from the code:
+
+1. **A failing micro-USB port on the PC**, already known to be unreliable — an unstable link during
+   disk access is enough to corrupt a FAT. Hardware, not software.
+2. **Two applications on the volume at once** — STUdio was started while the official Luniistore was
+   still running. Concurrent access.
+
+Neither the C6 atomic index write nor the C7 provenance work is implicated: there was **no write-path
+error** (`INVALID_STATE_ERR`, libusb, 500 or `SEVERE`) across any transfer, before the corruption or
+after. Recovery: a factory reset through the official application restored the firmware and the 26
+official packs but did **not** repair the FAT (the orphaned entry and Health Warning persisted);
+`chkdsk /f` corrected the lost chain and returned the volume to Healthy, leaving only an inert
+`FOUND.000`; the sixteen packs were then transferred over a reliable USB-A port with no incident.
+
+This is an accident of connection and operation, **not** a crash-safety test and not evidence about
+one. It underlines a prerequisite the write-path hardening cannot supply: a clean eject protects
+nothing if the physical link is unstable, and a read-only check before writing — `.md` at zero, a
+missing `.content`, or Health other than Healthy — would have caught the state before a transfer
+compounded it. Both are noted as possible future work, not as anything done here.
+
+### Limits
+
+- **One device, one firmware revision (`3.3`), one host, one session.** Device B was not exercised.
+- **The runtime was a local rebuild**, not the published archive. Same tree, different binary.
+- The dialog's option to **send the cached instance anyway** was still not exercised; *re-convert*
+  was chosen every time.
+- No interruption during an `ATOMIC_MOVE` or a copy, and **no physical crash-safety demonstrated**.
+  The corruptions were connection and operation accidents, not a deliberate robustness test.
+- `Get-Volume` again reported the volume for a few seconds after a successful eject — not a reliable
+  oracle for "still mounted".
+
 ## Remaining integrity gap
 
 The C1 to C5 field results concern detection, transfer tracking, handle lifecycle and libusb
@@ -458,14 +558,14 @@ temporary that is created exclusively and cleaned up on failure, synchronised wi
 installed by a single atomic move with no fallback to the previous non-atomic copy. The free-space
 precheck and the index parsing were hardened too. `TESTING.md` describes all of it.
 
-That code **has now been exercised on two devices**, across the three sessions that followed the
+That code **has now been exercised on two devices**, across the four sessions that followed the
 first. What each kind of evidence covers:
 
 | Kind of evidence | What it covers |
 | --- | --- |
 | Automated tests | NTFS on Linux and Windows, in CI |
 | Filesystem characterization | one disposable FAT32 VHD, run by hand, never in CI |
-| Field observation | the C1–C5 sessions, **and** three sessions exercising the reworked write path on **two devices**, all on firmware `3.3` from the same Windows host — adds on both, same-UUID replacements on device A, an additional pack topology played on both, index verified from the driver log throughout |
+| Field observation | the C1–C5 sessions, **and** four sessions exercising the reworked write path on **two devices**, all on firmware `3.3` from the same Windows host — adds on both, same-UUID replacements on device A, an additional pack topology played on both, all three provenance verdicts seen on device A, index verified from the driver log throughout |
 | Not proven | what happens if power is lost or the device pulled mid-install; that anything reached the flash; any other firmware revision, hardware revision, card or host; the cause of the FAT incident; that a conversion made **before** provenance was recorded came from the source beside it |
 
 A VHD is not a story teller. It shares a filesystem format and nothing else: no firmware, no SD
@@ -473,7 +573,7 @@ controller, no removable-media timing — so the characterization work and the f
 different kinds of evidence and neither substitutes for the other.
 
 The field sessions move one thing, and precisely one: **whether this code has run against real
-hardware**. It has — on two devices, across three sessions, and the operations completed. That is a
+hardware**. It has — on two devices, across four sessions, and the operations completed. That is a
 larger sample, not a different kind of evidence: it does not move anything about interruption,
 durability or generalisation, none of which any session tested.
 
@@ -490,8 +590,9 @@ durability or generalisation, none of which any session tested.
 - Firmware behaviour remains unknown: how a device reacts to a stray `.pi.new`, to a visible `.pi`,
   or to an index whose size is not a multiple of 16 is not documented anywhere here.
 - A conversion made **before** provenance was recorded still cannot be tied to the source beside it.
-  For those, C7-1's refusal to assume is all there is. Conversions made since carry a record and are
-  checked against it, which the fourth session exercised on a device.
+  For those, C7-1's refusal to assume is all there is — seen on hardware as the unknown verdict in
+  the fifth session. Conversions made since carry a record and are checked against it, and the fourth
+  and fifth sessions exercised both outcomes, mismatch and match, on a device.
 
 No conclusion about resilience to interruption or to power loss should be drawn from the field
 results recorded in this document, nor from the filesystem work that followed them.
