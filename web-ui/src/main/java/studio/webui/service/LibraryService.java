@@ -210,243 +210,179 @@ public class LibraryService {
     }
 
     public Optional<Path> addConvertedRawPackFile(String packPath, Boolean allowEnriched) {
-        // Archive format packs must first be converted to raw format
-        if (packPath.endsWith(".zip")) {
-            try {
-                // Observed before the conversion reads it; observed again afterwards, and
-                // recorded only if the two agree. See recordProvenance.
-                Optional<String> sourceBefore = sourceIdentity(packPath);
-                File tmp = createTempFile(packPath, ".pack").toFile();
-
-                LOGGER.info("Pack is in archive format. Converting to raw format and storing in temporary file: " + tmp.getAbsolutePath());
-
-                LOGGER.info("Reading archive format pack");
-                ArchiveStoryPackReader packReader = new ArchiveStoryPackReader();
-                StoryPack storyPack;
-                try (FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile())) {
-                    storyPack = packReader.read(fis);
-                }
-
-                // Uncompress pack assets
-                StoryPack uncompressedPack = storyPack;
-                if (PackAssetsCompression.hasCompressedAssets(storyPack)) {
-                    LOGGER.info("Uncompressing pack assets");
-                    uncompressedPack = PackAssetsCompression.withUncompressedAssets(storyPack);
-                }
-
-                LOGGER.info("Writing raw format pack");
-                BinaryStoryPackWriter packWriter = new BinaryStoryPackWriter();
-                try (FileOutputStream fos = new FileOutputStream(tmp)) {
-                    packWriter.write(uncompressedPack, fos, allowEnriched);
-                }
-
-                String destinationFileName = requirePackUuid(storyPack.getUuid()) + ".converted_" + System.currentTimeMillis() + ".pack";
-                Path destinationPath = requireLibraryEntry(destinationFileName);
-                LOGGER.info("Moving raw format pack into local library: " + destinationPath);
-                Files.move(tmp.toPath(), destinationPath);
-                recordProvenance(packPath, sourceBefore, destinationPath, "raw");
-
-                return Optional.of(Paths.get(destinationFileName));
-            } catch (Exception e) {
-                LOGGER.error("Failed to convert archive format pack to raw format", e);
-                throw new RuntimeException("Failed to convert archive format pack to raw format", e);
-            }
-        } else if (packPath.endsWith(".pack")) {
+        if (packPath.endsWith(".pack")) {
             LOGGER.error("Pack is already in raw format");
             throw new RuntimeException("Pack is already in raw format");
-        } else {
-            try {
-                // Observed before the conversion reads it; observed again afterwards, and
-                // recorded only if the two agree. See recordProvenance.
-                Optional<String> sourceBefore = sourceIdentity(packPath);
-                File tmp = createTempFile(packPath, ".pack").toFile();
-
-                LOGGER.info("Pack is in FS format. Converting to raw format and storing in temporary file: " + tmp.getAbsolutePath());
-
-                LOGGER.info("Reading FS format pack");
-                FsStoryPackReader packReader = new FsStoryPackReader();
-                StoryPack storyPack = packReader.read(requireLibraryEntry(packPath));
-
-                // Uncompress pack assets
-                StoryPack uncompressedPack = storyPack;
-                if (PackAssetsCompression.hasCompressedAssets(storyPack)) {
-                    LOGGER.info("Uncompressing pack assets");
-                    uncompressedPack = PackAssetsCompression.withUncompressedAssets(storyPack);
-                }
-
-                LOGGER.info("Writing raw format pack");
-                BinaryStoryPackWriter packWriter = new BinaryStoryPackWriter();
-                try (FileOutputStream fos = new FileOutputStream(tmp)) {
-                    packWriter.write(uncompressedPack, fos, allowEnriched);
-                }
-
-                String destinationFileName = requirePackUuid(storyPack.getUuid()) + ".converted_" + System.currentTimeMillis() + ".pack";
-                Path destinationPath = requireLibraryEntry(destinationFileName);
-                LOGGER.info("Moving raw format pack into local library: " + destinationPath);
-                Files.move(tmp.toPath(), destinationPath);
-                recordProvenance(packPath, sourceBefore, destinationPath, "raw");
-
-                return Optional.of(Paths.get(destinationFileName));
-            } catch (Exception e) {
-                LOGGER.error("Failed to convert FS format pack to raw format", e);
-                throw new RuntimeException("Failed to convert FS format pack to raw format", e);
-            }
         }
+        boolean fromArchive = packPath.endsWith(".zip");
+        return convert(packPath, fromArchive ? "archive" : "FS", "raw", ".pack", "raw",
+                fromArchive ? archiveReader() : fsReader(),
+                this::uncompressAssetsIfNeeded,
+                rawWriter(allowEnriched));
     }
 
     public Optional<Path> addConvertedArchivePackFile(String packPath) {
-        // Binary format packs must first be converted to archive format
         if (packPath.endsWith(".zip")) {
             LOGGER.error("Pack is already in archive format");
             throw new RuntimeException("Pack is already in archive format");
-        } else if (packPath.endsWith(".pack")) {
-            try {
-                // Observed before the conversion reads it; observed again afterwards, and
-                // recorded only if the two agree. See recordProvenance.
-                Optional<String> sourceBefore = sourceIdentity(packPath);
-                File tmp = createTempFile(packPath, ".zip").toFile();
-
-                LOGGER.info("Pack is in raw format. Converting to archive format and storing in temporary file: " + tmp.getAbsolutePath());
-
-                LOGGER.info("Reading raw format pack");
-                BinaryStoryPackReader packReader = new BinaryStoryPackReader();
-                StoryPack storyPack;
-                try (FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile())) {
-                    storyPack = packReader.read(fis);
-                }
-
-                // Compress pack assets
-                LOGGER.info("Compressing pack assets");
-                StoryPack compressedPack = PackAssetsCompression.withCompressedAssets(storyPack);
-
-                LOGGER.info("Writing archive format pack");
-                ArchiveStoryPackWriter packWriter = new ArchiveStoryPackWriter();
-                try (FileOutputStream fos = new FileOutputStream(tmp)) {
-                    packWriter.write(compressedPack, fos);
-                }
-
-                String destinationFileName = requirePackUuid(compressedPack.getUuid()) + ".converted_" + System.currentTimeMillis() + ".zip";
-                Path destinationPath = requireLibraryEntry(destinationFileName);
-                LOGGER.info("Moving archive format pack into local library: " + destinationPath);
-                Files.move(tmp.toPath(), destinationPath);
-                recordProvenance(packPath, sourceBefore, destinationPath, "archive");
-
-                return Optional.of(Paths.get(destinationFileName));
-            } catch (Exception e) {
-                LOGGER.error("Failed to convert raw format pack to archive format", e);
-                throw new RuntimeException("Failed to convert raw format pack to archive format", e);
-            }
-        } else {
-            try {
-                // Observed before the conversion reads it; observed again afterwards, and
-                // recorded only if the two agree. See recordProvenance.
-                Optional<String> sourceBefore = sourceIdentity(packPath);
-                File tmp = createTempFile(packPath, ".zip").toFile();
-
-                LOGGER.info("Pack is in FS format. Converting to archive format and storing in temporary file: " + tmp.getAbsolutePath());
-
-                LOGGER.info("Reading FS format pack");
-                FsStoryPackReader packReader = new FsStoryPackReader();
-                StoryPack storyPack = packReader.read(requireLibraryEntry(packPath));
-
-                // No need to compress pack assets
-
-                LOGGER.info("Writing archive format pack");
-                ArchiveStoryPackWriter packWriter = new ArchiveStoryPackWriter();
-                try (FileOutputStream fos = new FileOutputStream(tmp)) {
-                    packWriter.write(storyPack, fos);
-                }
-
-                String destinationFileName = requirePackUuid(storyPack.getUuid()) + ".converted_" + System.currentTimeMillis() + ".zip";
-                Path destinationPath = requireLibraryEntry(destinationFileName);
-                LOGGER.info("Moving archive format pack into local library: " + destinationPath);
-                Files.move(tmp.toPath(), destinationPath);
-                recordProvenance(packPath, sourceBefore, destinationPath, "archive");
-
-                return Optional.of(Paths.get(destinationFileName));
-            } catch (Exception e) {
-                LOGGER.error("Failed to convert FS format pack to archive format", e);
-                throw new RuntimeException("Failed to convert FS format pack to archive format", e);
-            }
         }
+        boolean fromRaw = packPath.endsWith(".pack");
+        return convert(packPath, fromRaw ? "raw" : "FS", "archive", ".zip", "archive",
+                fromRaw ? binaryReader() : fsReader(),
+                fromRaw ? this::compressAssets : this::leaveAssetsAlone,
+                archiveWriter());
     }
 
     public Optional<Path> addConvertedFsPackFile(String packPath, Boolean allowEnriched) {
-        // Archive format packs must first be converted to FS format
-        if (packPath.endsWith(".zip")) {
-            try {
-                // Observed before the conversion reads it; observed again afterwards, and
-                // recorded only if the two agree. See recordProvenance.
-                Optional<String> sourceBefore = sourceIdentity(packPath);
-                Path tmp = createTempDirectory(packPath);
-
-                LOGGER.info("Pack to transfer is in archive format. Converting to FS format and storing in temporary folder: " + tmp.toAbsolutePath().toString());
-
-                LOGGER.info("Reading archive format pack");
-                ArchiveStoryPackReader packReader = new ArchiveStoryPackReader();
-                StoryPack storyPack;
-                try (FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile())) {
-                    storyPack = packReader.read(fis);
-                }
-
-                // Prepare assets (RLE-encoded BMP, audio must already be MP3)
-                LOGGER.info("Converting assets if necessary");
-                StoryPack packWithPreparedAssets = PackAssetsCompression.withPreparedAssetsFirmware2dot4(storyPack);
-
-                LOGGER.info("Writing FS format pack");
-                FsStoryPackWriter writer = new FsStoryPackWriter();
-                Path folderPath = writer.write(packWithPreparedAssets, tmp);
-
-                String destinationFolder = requirePackUuid(packWithPreparedAssets.getUuid()) + ".converted_" + System.currentTimeMillis();
-                Path destinationPath = requireLibraryEntry(destinationFolder);
-                LOGGER.info("Moving FS format pack into local library: " + destinationPath);
-                Files.move(folderPath, destinationPath);
-                recordProvenance(packPath, sourceBefore, destinationPath, "fs");
-
-                return Optional.of(Paths.get(destinationFolder));
-            } catch (Exception e) {
-                LOGGER.error("Failed to convert archive format pack to FS format", e);
-                throw new RuntimeException("Failed to convert archive format pack to FS format", e);
-            }
-        } else if (packPath.endsWith(".pack")) {
-            try {
-                // Observed before the conversion reads it; observed again afterwards, and
-                // recorded only if the two agree. See recordProvenance.
-                Optional<String> sourceBefore = sourceIdentity(packPath);
-                Path tmp = createTempDirectory(packPath);
-
-                LOGGER.info("Pack is in raw format. Converting to FS format and storing in temporary folder: " + tmp.toAbsolutePath().toString());
-
-                LOGGER.info("Reading raw format pack");
-                BinaryStoryPackReader packReader = new BinaryStoryPackReader();
-                StoryPack storyPack;
-                try (FileInputStream fis = new FileInputStream(requireLibraryEntry(packPath).toFile())) {
-                    storyPack = packReader.read(fis);
-                }
-
-                // Prepare assets (RLE-encoded BMP, audio must already be MP3)
-                LOGGER.info("Converting assets if necessary");
-                StoryPack packWithPreparedAssets = PackAssetsCompression.withPreparedAssetsFirmware2dot4(storyPack);
-
-                LOGGER.info("Writing FS format pack");
-                FsStoryPackWriter writer = new FsStoryPackWriter();
-                Path folderPath = writer.write(packWithPreparedAssets, tmp);
-
-                String destinationFolder = requirePackUuid(packWithPreparedAssets.getUuid()) + ".converted_" + System.currentTimeMillis();
-                Path destinationPath = requireLibraryEntry(destinationFolder);
-                LOGGER.info("Moving FS format pack into local library: " + destinationPath);
-                Files.move(folderPath, destinationPath);
-                recordProvenance(packPath, sourceBefore, destinationPath, "fs");
-
-                return Optional.of(Paths.get(destinationFolder));
-            } catch (Exception e) {
-                LOGGER.error("Failed to convert raw format pack to FS format", e);
-                throw new RuntimeException("Failed to convert raw format pack to FS format", e);
-            }
-        } else {
+        boolean fromArchive = packPath.endsWith(".zip");
+        boolean fromRaw = packPath.endsWith(".pack");
+        if (!fromArchive && !fromRaw) {
             LOGGER.error("Pack is already in FS format");
             throw new RuntimeException("Pack is already in FS format");
         }
+        return convert(packPath, fromArchive ? "archive" : "raw", "FS", null, "fs",
+                fromArchive ? archiveReader() : binaryReader(),
+                this::prepareAssetsForFirmware2dot4,
+                fsWriter());
+    }
+
+    /**
+     * The one conversion path, shared by the six conversions the library offers.
+     *
+     * <p>Each of those was written out in full, and the six copies had drifted: one logged "Pack to
+     * transfer is in" where the others logged "Pack is in", and three took the destination UUID from
+     * the pack before the asset transform while three took it after. Neither difference changed what
+     * the code did — the transforms mutate and return the same instance — but keeping six copies in
+     * step by hand is the problem this removes.
+     *
+     * <p>The order below is the part that matters and the reason this is one method rather than six.
+     * The source is observed <em>before</em> anything reads it and again afterwards, and the
+     * provenance record is only written if the two observations agree; the conversion writes to a
+     * temporary and is moved into the library only once it has succeeded. Those are the properties
+     * {@code ConversionProvenanceTest} and {@code ConversionStreamLifecycleTest} hold, and they now
+     * hold in one place instead of six.
+     *
+     * @param extension the suffix of the produced artifact, or {@code null} when the conversion
+     *                  produces a folder rather than a file
+     */
+    private Optional<Path> convert(String packPath, String sourceLabel, String targetLabel,
+                                   String extension, String provenanceKind,
+                                   PackReader reader, AssetTransform transform, PackWriter writer) {
+        try {
+            // Observed before the conversion reads it; observed again afterwards, and
+            // recorded only if the two agree. See recordProvenance.
+            Optional<String> sourceBefore = sourceIdentity(packPath);
+
+            boolean producesFolder = extension == null;
+            Path tmp = producesFolder ? createTempDirectory(packPath) : createTempFile(packPath, extension);
+            LOGGER.info("Pack is in " + sourceLabel + " format. Converting to " + targetLabel
+                    + " format and storing in temporary " + (producesFolder ? "folder: " : "file: ")
+                    + tmp.toAbsolutePath());
+
+            LOGGER.info("Reading " + sourceLabel + " format pack");
+            StoryPack storyPack = reader.read(requireLibraryEntry(packPath));
+
+            StoryPack converted = transform.apply(storyPack);
+
+            LOGGER.info("Writing " + targetLabel + " format pack");
+            Path produced = writer.write(converted, tmp);
+
+            String destinationName = requirePackUuid(converted.getUuid()) + ".converted_"
+                    + System.currentTimeMillis() + (producesFolder ? "" : extension);
+            Path destinationPath = requireLibraryEntry(destinationName);
+            LOGGER.info("Moving " + targetLabel + " format pack into local library: " + destinationPath);
+            Files.move(produced, destinationPath);
+            recordProvenance(packPath, sourceBefore, destinationPath, provenanceKind);
+
+            return Optional.of(Paths.get(destinationName));
+        } catch (Exception e) {
+            String message = "Failed to convert " + sourceLabel + " format pack to " + targetLabel + " format";
+            LOGGER.error(message, e);
+            throw new RuntimeException(message, e);
+        }
+    }
+
+    @FunctionalInterface
+    private interface PackReader {
+        StoryPack read(Path source) throws Exception;
+    }
+
+    @FunctionalInterface
+    private interface AssetTransform {
+        StoryPack apply(StoryPack pack) throws Exception;
+    }
+
+    @FunctionalInterface
+    private interface PackWriter {
+        /** Writes {@code pack} under {@code target} and returns what must be moved into the library. */
+        Path write(StoryPack pack, Path target) throws Exception;
+    }
+
+    private static PackReader archiveReader() {
+        return source -> {
+            try (FileInputStream fis = new FileInputStream(source.toFile())) {
+                return new ArchiveStoryPackReader().read(fis);
+            }
+        };
+    }
+
+    private static PackReader binaryReader() {
+        return source -> {
+            try (FileInputStream fis = new FileInputStream(source.toFile())) {
+                return new BinaryStoryPackReader().read(fis);
+            }
+        };
+    }
+
+    private static PackReader fsReader() {
+        return source -> new FsStoryPackReader().read(source);
+    }
+
+    private StoryPack uncompressAssetsIfNeeded(StoryPack pack) throws Exception {
+        if (PackAssetsCompression.hasCompressedAssets(pack)) {
+            LOGGER.info("Uncompressing pack assets");
+            return PackAssetsCompression.withUncompressedAssets(pack);
+        }
+        return pack;
+    }
+
+    private StoryPack compressAssets(StoryPack pack) throws Exception {
+        LOGGER.info("Compressing pack assets");
+        return PackAssetsCompression.withCompressedAssets(pack);
+    }
+
+    /** An FS source already carries the assets an archive wants, so nothing is done to them. */
+    private StoryPack leaveAssetsAlone(StoryPack pack) {
+        return pack;
+    }
+
+    private StoryPack prepareAssetsForFirmware2dot4(StoryPack pack) throws Exception {
+        // Prepare assets (RLE-encoded BMP, audio must already be MP3)
+        LOGGER.info("Converting assets if necessary");
+        return PackAssetsCompression.withPreparedAssetsFirmware2dot4(pack);
+    }
+
+    private static PackWriter rawWriter(Boolean allowEnriched) {
+        return (pack, target) -> {
+            try (FileOutputStream fos = new FileOutputStream(target.toFile())) {
+                new BinaryStoryPackWriter().write(pack, fos, allowEnriched);
+            }
+            return target;
+        };
+    }
+
+    private static PackWriter archiveWriter() {
+        return (pack, target) -> {
+            try (FileOutputStream fos = new FileOutputStream(target.toFile())) {
+                new ArchiveStoryPackWriter().write(pack, fos);
+            }
+            return target;
+        };
+    }
+
+    /** The FS writer creates its own folder under the temporary directory and returns it. */
+    private static PackWriter fsWriter() {
+        return (pack, target) -> new FsStoryPackWriter().write(pack, target);
     }
 
     /**
