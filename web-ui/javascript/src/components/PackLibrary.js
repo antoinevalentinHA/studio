@@ -34,7 +34,7 @@ import {verifyConversion} from "../services/library";
 import './PackLibrary.css';
 
 
-class PackLibrary extends React.Component {
+export class PackLibrary extends React.Component {
 
     constructor(props) {
         super(props);
