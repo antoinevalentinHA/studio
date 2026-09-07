@@ -72,6 +72,60 @@ export class PackLibrary extends React.Component {
         });
     }
 
+    componentWillUnmount() {
+        this.stopDeviceAutoScroll();
+    }
+
+    /*
+     * The device list is a scrolling box that shows only a few tiles at a time -- at common window
+     * widths its grid is a single column, so a dozen packs stack well past the fold. A drag raises
+     * dragenter only for tiles the pointer actually reaches, and the browser's own drag scrolling
+     * does not drive an inner scroll container, so without this a pack could only ever be dropped
+     * beside a tile that was already on screen.
+     *
+     * Driven by a frame loop rather than by dragover alone: dragover stops firing while the pointer
+     * is held still, which is exactly what someone does when waiting for a list to scroll.
+     */
+    deviceAutoScrollSpeed = (zone, pointerY) => {
+        const EDGE = 80;
+        const MAX_PER_FRAME = 18;
+        const rect = zone.getBoundingClientRect();
+        const fromTop = pointerY - rect.top;
+        const fromBottom = rect.bottom - pointerY;
+        if (fromTop < EDGE) {
+            return -Math.ceil(MAX_PER_FRAME * (EDGE - Math.max(fromTop, 0)) / EDGE);
+        }
+        if (fromBottom < EDGE) {
+            return Math.ceil(MAX_PER_FRAME * (EDGE - Math.max(fromBottom, 0)) / EDGE);
+        }
+        return 0;
+    };
+
+    updateDeviceAutoScroll = (zone, pointerY) => {
+        this.autoScrollZone = zone;
+        this.autoScrollSpeed = this.deviceAutoScrollSpeed(zone, pointerY);
+        if (this.autoScrollSpeed !== 0 && !this.autoScrollFrame) {
+            const step = () => {
+                if (!this.autoScrollZone || this.autoScrollSpeed === 0) {
+                    this.autoScrollFrame = null;
+                    return;
+                }
+                this.autoScrollZone.scrollTop += this.autoScrollSpeed;
+                this.autoScrollFrame = window.requestAnimationFrame(step);
+            };
+            this.autoScrollFrame = window.requestAnimationFrame(step);
+        }
+    };
+
+    stopDeviceAutoScroll = () => {
+        if (this.autoScrollFrame) {
+            window.cancelAnimationFrame(this.autoScrollFrame);
+        }
+        this.autoScrollFrame = null;
+        this.autoScrollZone = null;
+        this.autoScrollSpeed = 0;
+    };
+
     componentWillReceiveProps(nextProps, nextContext) {
         console.log(nextProps);
         this.setState({
@@ -82,6 +136,7 @@ export class PackLibrary extends React.Component {
 
     onDropPackIntoDevice = (event) => {
         event.preventDefault();
+        this.stopDeviceAutoScroll();
         let packData = event.dataTransfer.getData("local-library-pack");
         if (!packData) {
             // Ignore missing node data
@@ -449,7 +504,10 @@ export class PackLibrary extends React.Component {
                     </div>
                     <div className={`device-dropzone ${this.state.dragging !== null ? 'highlighted-dropzone' : ''}`}
                          onDrop={this.onDropPackIntoDevice}
-                         onDragOver={event => { event.preventDefault(); }}
+                         onDragOver={event => {
+                             event.preventDefault();
+                             this.updateDeviceAutoScroll(event.currentTarget, event.clientY);
+                         }}
                          onDragLeave={event => {
                              // Get the location of the dropzone
                              var rect = event.target.closest('.device-dropzone').getBoundingClientRect();
@@ -498,6 +556,7 @@ export class PackLibrary extends React.Component {
                                          }
                                      }}
                                      onDragEnd={event => {
+                                         this.stopDeviceAutoScroll();
                                          // Reorder on device only if order changed
                                          if (this.state.beforeReordering.reduce((acc,p)=>acc+','+p.uuid, '') !== this.state.device.packs.reduce((acc,p)=>acc+','+p.uuid, '')) {
                                              console.log("Order changed, reordering...");
