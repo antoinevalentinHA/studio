@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -32,6 +33,9 @@ import java.util.stream.Stream;
 public class MockStoryTellerService implements IStoryTellerService {
 
     public static final String MOCKED_DEVICE_PATH = "/.studio/device/";
+    private static final String PACK_FILE_EXTENSION = ".pack";
+    /** Not a pack file, so the listing skips it on its own. */
+    private static final String PACK_ORDER_FILE = ".order";
     private static final int BUFFER_SIZE = 1024 * 1024 * 10;
 
     private final Logger LOGGER = LoggerFactory.getLogger(MockStoryTellerService.class);
@@ -87,7 +91,10 @@ public class MockStoryTellerService implements IStoryTellerService {
         if (!deviceFolder.exists() || !deviceFolder.isDirectory()) {
             return CompletableFuture.completedFuture(new JsonArray());
         } else {
-            // List binary pack files in mocked device folder
+            // List binary pack files in mocked device folder, in the order last submitted through
+            // reorderPacks. The sort is stable, so packs the order does not name keep the order the
+            // filesystem gave them.
+            List<String> order = packOrder();
             try (Stream<Path> paths = Files.walk(Paths.get(devicePath()))) {
                 return CompletableFuture.completedFuture(new JsonArray(
                                 paths
@@ -97,6 +104,7 @@ public class MockStoryTellerService implements IStoryTellerService {
                                         ))
                                         .filter(Optional::isPresent)
                                         .map(Optional::get)
+                                        .sorted(Comparator.comparingInt(pack -> order.indexOf(pack.getString("uuid"))))
                                         .collect(Collectors.toList())
                         )
                 );
@@ -204,9 +212,64 @@ public class MockStoryTellerService implements IStoryTellerService {
         }
     }
 
+    /**
+     * Records the order the packs should be listed in.
+     *
+     * <p>The mocked device is one file per pack and a folder listing has no order of its own, so the
+     * order is written to a file beside them — which is what a real device does too, in its own pack
+     * index.
+     *
+     * <p>The guard is the one {@code FsStoryTellerAsyncDriver.reorderPacks} applies: every submitted
+     * UUID must be on the device, and nothing requires the converse, so a partial list is honoured.
+     * Copying that rather than improving on it is deliberate: dev mode is the only way to exercise
+     * this without hardware, and a mock that behaved better would hide the real device's surprises.
+     */
     public CompletableFuture<Boolean> reorderPacks(List<String> uuids) {
-        // Not supported
-        return CompletableFuture.completedFuture(false);
+        File deviceFolder = new File(devicePath());
+        if (!deviceFolder.exists() || !deviceFolder.isDirectory()) {
+            return CompletableFuture.completedFuture(false);
+        }
+        Set<String> onDevice = packUuidsOnDevice();
+        if (!onDevice.containsAll(uuids)) {
+            LOGGER.error("Cannot reorder packs on mocked device: the list names a pack it does not hold");
+            return CompletableFuture.completedFuture(false);
+        }
+        try {
+            Files.write(Paths.get(devicePath(), PACK_ORDER_FILE), uuids, StandardCharsets.UTF_8);
+            return CompletableFuture.completedFuture(true);
+        } catch (IOException e) {
+            LOGGER.error("Failed to write pack order on mocked device", e);
+            return CompletableFuture.completedFuture(false);
+        }
+    }
+
+    private Set<String> packUuidsOnDevice() {
+        File[] files = new File(devicePath()).listFiles();
+        if (files == null) {
+            return Collections.emptySet();
+        }
+        return Arrays.stream(files)
+                .map(File::getName)
+                .filter(name -> name.endsWith(PACK_FILE_EXTENSION))
+                .map(name -> name.substring(0, name.length() - PACK_FILE_EXTENSION.length()))
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * The order last submitted, or an empty list when none has been. A pack missing from it sorts by
+     * {@code indexOf == -1} and therefore lands at the front, exactly as it does on a real device.
+     */
+    private List<String> packOrder() {
+        Path orderFile = Paths.get(devicePath(), PACK_ORDER_FILE);
+        if (!Files.isRegularFile(orderFile)) {
+            return Collections.emptyList();
+        }
+        try {
+            return Files.readAllLines(orderFile, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            LOGGER.error("Failed to read pack order from mocked device", e);
+            return Collections.emptyList();
+        }
     }
 
     public CompletableFuture<Optional<String>> extractPack(String uuid, File destFile) {
