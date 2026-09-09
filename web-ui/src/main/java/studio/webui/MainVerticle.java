@@ -75,6 +75,24 @@ public class MainVerticle extends AbstractVerticle {
 
     static final int LISTEN_PORT = 8080;
 
+    /**
+     * The origins the API answers: this machine asking about itself, under any of the loopback's
+     * names and on any port.
+     *
+     * <p>{@code http://localhost:.*} alone was not enough once the server stopped binding to every
+     * interface. {@link #listenHost()} is an address, not a name, so the URL the application opens
+     * in the browser is {@code http://127.0.0.1:8080} — and a browser sends {@code Origin} on a POST
+     * even when it is same-origin, so the page the application had just opened was refused by the
+     * application that opened it. The event bus handshake is a POST, so device monitoring never
+     * connected.
+     *
+     * <p>Kept as a list of loopback spellings rather than widened to {@code *}: this API has no
+     * authentication, and whatever a page on another origin could reach here, it could reach in the
+     * browser of anyone who visits it. Ports stay open-ended because the development server picks
+     * its own.
+     */
+    static final String LOOPBACK_ORIGINS = "http://(localhost|127\\.0\\.0\\.1|\\[::1\\]):\\d+";
+
     private final Logger LOGGER = LoggerFactory.getLogger(MainVerticle.class);
 
     private DatabaseMetadataService databaseMetadataService;
@@ -106,7 +124,7 @@ public class MainVerticle extends AbstractVerticle {
         Router router = Router.router(vertx);
 
         // Handle cross-origin calls
-        router.route().handler(CorsHandler.create("http://localhost:.*")
+        router.route().handler(CorsHandler.create(LOOPBACK_ORIGINS)
                 .allowedMethods(Set.of(
                         HttpMethod.GET,
                         HttpMethod.POST
