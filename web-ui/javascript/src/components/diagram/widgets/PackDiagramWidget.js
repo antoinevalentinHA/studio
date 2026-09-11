@@ -23,6 +23,7 @@ import TrayItemWidget from "./TrayItemWidget";
 import Modal from "../../Modal";
 import {setEditorDiagram, setEditorFilename, setDiagramErrors} from "../../../actions";
 import {generateFilename} from "../../../utils/packs";
+import {sanitizeHtml} from "../../../utils/html";
 
 
 class PackDiagramWidget extends React.Component {
@@ -371,8 +372,8 @@ class PackDiagramWidget extends React.Component {
         let key = 'dialogs.editor.help.' + this.state.showHelpDialog;
         return <Modal id={`${this.state.showHelpDialog}-help-dialog`}
                className="help-dialog"
-               title={<span dangerouslySetInnerHTML={{__html: t(key+'.title')}}/>}
-               content={<div dangerouslySetInnerHTML={{__html: t(key+'.content')}} ></div>}
+               title={<span dangerouslySetInnerHTML={{__html: sanitizeHtml(t(key+'.title'))}}/>}
+               content={<div dangerouslySetInnerHTML={{__html: sanitizeHtml(t(key+'.content'))}} ></div>}
                buttons={[
                    { label: t('dialogs.shared.ok'), onClick: this.dismissHelpDialog}
                ]}
