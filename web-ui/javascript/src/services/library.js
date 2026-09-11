@@ -5,6 +5,7 @@
  */
 
 import {handleJsonOrError} from "../utils/fetch";
+import {parseJson} from "../utils/json";
 
 export const fetchLibraryInfos = () => {
     return fetch('/api/library/infos')
@@ -31,8 +32,13 @@ export const uploadToLibrary = async (uuid, path, packData, progressHandler) => 
             xhr.upload.onprogress = progressHandler;
         }
         xhr.onload = () => {
-            console.log('xhr upload complete: ' + JSON.parse(xhr.responseText));
-            resolve(JSON.parse(xhr.responseText));
+            let response = parseJson(xhr.responseText);
+            if (response === undefined) {
+                reject(new Error('Upload failed: unexpected response from the server (' + xhr.status + ')'));
+                return;
+            }
+            console.log('xhr upload complete');
+            resolve(response);
         };
         xhr.open('post', '/api/library/upload', true);
         let formData = new FormData();

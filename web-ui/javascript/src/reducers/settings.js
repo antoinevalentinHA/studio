@@ -6,22 +6,24 @@
 
 import {
     LOCAL_STORAGE_ANNOUNCE_OPTOUT,
-    LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT
+    LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT,
+    safeGetItem,
+    safeSetItem
 } from "../utils/storage";
 
 
 const initialState = {
-    announceOptOut: localStorage.getItem(LOCAL_STORAGE_ANNOUNCE_OPTOUT) === 'true' || false,
-    allowEnriched: localStorage.getItem(LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT) === 'true' || false
+    announceOptOut: safeGetItem(LOCAL_STORAGE_ANNOUNCE_OPTOUT) === 'true',
+    allowEnriched: safeGetItem(LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT) === 'true'
 };
 
 const settings = (state = initialState, action) => {
     switch (action.type) {
         case 'SET_ANNOUNCE_OPTOUT':
-            localStorage.setItem(LOCAL_STORAGE_ANNOUNCE_OPTOUT, action.announceOptOut);
+            safeSetItem(LOCAL_STORAGE_ANNOUNCE_OPTOUT, action.announceOptOut);
             return { ...state, announceOptOut: action.announceOptOut };
         case 'SET_ALLOW_ENRICHED':
-            localStorage.setItem(LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT, action.allowEnriched);
+            safeSetItem(LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT, action.allowEnriched);
             return { ...state, allowEnriched: action.allowEnriched };
         default:
             return state

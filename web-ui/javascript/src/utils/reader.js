@@ -13,6 +13,7 @@ import CoverNodeModel from "../components/diagram/models/CoverNodeModel";
 import MenuNodeModel from "../components/diagram/models/MenuNodeModel";
 import StoryNodeModel from "../components/diagram/models/StoryNodeModel";
 import PackDiagramModel from "../components/diagram/models/PackDiagramModel";
+import {parseJson} from "./json";
 
 
 export function readFromArchive(file) {
@@ -20,9 +21,17 @@ export function readFromArchive(file) {
     var zip = new JSZip();
     return zip.loadAsync(file)
         .then((archive) => {
-            // Read JSON story descriptor
-            return archive.file("story.json").async('string').then(storyJson => {
-                let json = JSON.parse(storyJson);
+            // Read JSON story descriptor. The archive is user input: say what is wrong with it
+            // rather than let a null or a SyntaxError escape from here.
+            let descriptor = archive.file("story.json");
+            if (!descriptor) {
+                throw new Error("Not a story pack archive: no story.json inside");
+            }
+            return descriptor.async('string').then(storyJson => {
+                let json = parseJson(storyJson);
+                if (!json) {
+                    throw new Error("Not a story pack archive: story.json is not valid JSON");
+                }
 
                 var loadedModel = new PackDiagramModel(json.title, json.version, (json.description || ''), (json.nightModeAvailable || false));
 
