@@ -1,0 +1,33 @@
+# Dependency update visibility. Nothing here changes the build: Dependabot opens pull requests,
+# CI judges them on both platforms like any other, and a human merges or closes.
+#
+# Maven is declared once at the root: it resolves the modules from the parent pom. The frontend
+# lives in web-ui/javascript with its own lockfile, so npm is declared there. Minor and patch
+# updates are grouped per ecosystem to keep the number of pull requests manageable on a project
+# whose dependencies have not moved for years; majors come one at a time, since each one is a
+# decision (Vert.x 4, react-scripts 5) rather than a bump.
+version: 2
+updates:
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      maven-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "npm"
+    directory: "/web-ui/javascript"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
