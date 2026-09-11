@@ -6,6 +6,12 @@ separate three things the code blurs together: what has been **verified on a rea
 is **only what the code does** (and may or may not be what the firmware expects), and what is
 **unknown**. Every field below carries one of those three statuses.
 
+This is written from STUdio's angle — the *write* path, what the tools produce versus what a device
+holds — and it deliberately does not re-do the firmware reverse engineering, which o-daneel has
+already done thoroughly in [`Lunii.RE`](https://github.com/o-daneel/Lunii.RE) and
+[`Lunii_v3.RE`](https://github.com/o-daneel/Lunii_v3.RE). Where their firmware work settles a
+question this document left open, it is cited inline and gathered in §10.
+
 The device used for the verified parts:
 
 | | |
@@ -35,13 +41,13 @@ Root of the FAT32 partition, as found:
 | `.md` | 128 B | **verified** (v7) | Device metadata: firmware, serial, cipher material. §2 |
 | `.pi` | 16 B × packs | **verified** | Pack index: the order of stories on the device. §3 |
 | `.content/` | | **verified** | One folder per pack, named by the tail of its UUID. §4 |
-| `.cfg` | 42 B | **unknown** | Device settings, apparently `(value u16, key u16)` pairs. §8 |
+| `.cfg` | 42 B | **decoded** | Device settings, nine `(tag u16, value u16)` pairs — fully mapped by Lunii.RE, confirmed against this card. §8 |
 | `CFG~1` | 42 B | **unknown** | Byte-identical copy of `.cfg`. A FAT short-name artefact of a rename, or a backup. |
 | `.logo` | ~11 KB | **verified format** | A BMP, 320×240, 4-bit, RLE4 — the exact image format of pack assets (§6). The boot logo, presumably. Not read or written by STUdio. |
 | `.pi.hidden` | 0 B | **not a firmware file** | Written by [Lunii.QT](https://github.com/o-daneel/Lunii.QT), not by the device: its "hide stories" feature moves `.pi` entries here so that the Luniistore app does not see them — and does not delete them (see the factory flag, §5). Empty here because nothing is currently hidden. Same 16-byte UUID records as `.pi`, presumably. |
 | `.syncextras` | 4 B | **unknown** | Four zero bytes. |
 | `uplugged` | 0 B | **unknown** | Empty marker, written at the last Luniistore sync. Possibly "unplugged without eject". |
-| `etc/wifi.prefs` | 1160 B | **unknown** | High-entropy blob, i.e. ciphered. Wi-Fi credentials of the Luniistore app, most likely. |
+| `etc/wifi.prefs` | 1160 B | **explained** | Wi-Fi credentials, ciphered with the **device key** (Lunii.RE, `HAL_CRYP_KeyDev_*`). Not the Luniistore app's — the device's own, for its Wi-Fi sync. |
 | `System Volume Information/` | | — | Windows indexer residue, nothing to do with the device. |
 
 Two things about the volume itself, both observed:
@@ -75,8 +81,7 @@ layout.
 | 0x08 | 18 | Zero | verified | Skipped by the parser. |
 | 0x1A | 24 | Serial number, ASCII, zero-padded | verified | 14 digits followed by 10 NUL bytes on this device. The parser keeps the 24 bytes as the string, NULs included. |
 | 0x32 | 2 | Zero | verified | Inside the 14 bytes the parser skips. |
-| 0x34 | 2 | **USB vendor id** | **verified, not read by the code** | `0x0483`, little-endian. |
-| 0x36 | 2 | **USB product id** | **verified, not read by the code** | `0xa341`. |
+| 0x34 | 4 | **Static marker**, not read by the code | `83 04 41 a3` on this card. These four bytes happen to equal the USB ids little-endian (`0x0483` / `0xa341`), which is how they were first read here — but Lunii.RE documents `830441A3` as the head of a fixed signature `830441A34E5350454349414C` ("…NSPECIAL") in the v2 `.md`, so reading them as the USB ids is not safe. On this v7 `.md` the bytes that follow differ from the v2 signature, so what the field is remains open; it is not the vendor/product pair the way the phrasing first suggested. |
 | 0x38 | 2 | Zero | verified | |
 | 0x3A | 2 | `1` | unknown | |
 | 0x3C | 2 | `0` | unknown | |
@@ -100,12 +105,16 @@ is `serial[0:24] ‖ serial[0:8]` — the 24-byte serial field (NULs included) f
 the three STUdio-made ones and six of the nine Luniistore ones. All nine open with the device
 key from `.md`. So for those, `bt` binds a pack to a device and to nothing else.
 
-**The other three Luniistore packs carry an opaque `bt`**: 32 high-entropy bytes, different for
-each, and **the device key does not decipher their `ri`, `li` or assets**. Whatever cipher or key
-they use is not in `.md` in any form tried (§10). The natural reading — `bt` is a per-pack key
-wrapped with the device key — was tested (AES-CBC and AES-ECB unwrap, both halves as key/IV,
-word-swapped or not) and did not pan out. Nothing else distinguishes these three: same layout,
-same `ni` format, same asset naming, `nm` present, factory flag `0`, and the device plays them.
+<a id="2a"></a>**The other three Luniistore packs carry an opaque `bt`**: 32 high-entropy bytes, different for
+each, and **the device key does not decipher their `ri`, `li` or assets**. Lunii.RE explains why,
+and it is the real v3 scheme rather than an anomaly (§10, §2a). On a v3 firmware `bt` is not
+serial-derived at all: it is a **per-story AES key+IV, itself ciphered with the device key**, and
+the story's resources are ciphered with that **per-story key**, not the device key. So these three
+are genuine v3 official packs — to read one you decipher its `bt` with the device key to recover the
+story key, then decipher the resources with that. Our earlier unwrap attempt did not land, but the
+path is known, not mysterious. The other nine use the simpler device-key-direct scheme STUdio and
+the transfer tools write (serial-derived `bt`, resources under the device key), which is why they
+opened directly.
 
 On v6 the code does the opposite (key from serial, `bt` from `.md`) — code only, no v6 device.
 
@@ -150,7 +159,7 @@ Inside a folder:
 | `si` | 512-byte prefix | verified | Sound index: same, for sounds. §6 |
 | `rf/` | each file, 512-byte prefix | verified | The images. |
 | `sf/` | each file, 512-byte prefix | verified | The sounds. |
-| `bt` | no | verified | Boot file. 32 bytes on v7, serial-derived on 9 of 12 packs and opaque on 3 (§2); 64 bytes with the V2 cipher (code only). |
+| `bt` | no | verified | Authorization / key file. 32 bytes on v7: serial-derived on the 9 device-key-direct packs, a device-key-ciphered per-story key+IV on the 3 genuine v3 packs (§2, Lunii.RE); 64 bytes with the V2 cipher (code only). |
 | `nm` | — | verified present | Empty marker: night mode available. Present on 7 of the 12 packs, including 2 STUdio-made ones. |
 | `.cleartext` | — | library only | Empty marker meaning "assets are not ciphered". Written by STUdio in the library, never on the card. The reader also treats a pack with clear files but no marker as clear and repairs the marker. |
 
@@ -263,22 +272,26 @@ whether a real V2 firmware accepts the output — that needs a V2 device.
 
 ---
 
-## 8. `.cfg` — device settings — **unknown**
+## 8. `.cfg` — device settings — **decoded** (Lunii.RE)
 
-42 bytes. Reads naturally as a 4-byte header followed by nine `(value u16, key u16)` pairs and a
-trailing `u16`:
+38 bytes (0x26). A 2-byte header (`01 00`) followed by nine `(tag u16, value u16)` pairs. Lunii.RE
+mapped every tag from the firmware; the shape matches this card byte for byte, and the meanings are
+theirs, read out of the code rather than guessed:
 
-```
-header  00 01 00 00
-pairs   key 1 = 300 · key 2 = 60 · key 3 = 5 · key 4 = 1 · key 5 = 30
-        key 6 = 2   · key 7 = 0  · key 8 = 1 · key 9 = 1
-tail    01 00
-```
+| Tag | Default | Max | Role |
+| --- | --- | --- | --- |
+| 0 | 300 s | 3600 s | idle time before sleep |
+| 1 | 60 s | 600 s | TBD |
+| 2 | 5 s | 10 s | low-battery message display time |
+| 3 | 0 | | night mode — enable |
+| 4 | 0 | | night mode — volume level |
+| 5 | 3 | | night mode — stories before auto-sleep |
+| 6 | ? | | boolean tied to tag 5 |
+| 7 | 1 | | TBD |
+| 8 | 1 | | request to recreate `.nm` |
 
-The values are the shape of settings — 300 and 60 look like seconds, 5 like a volume level,
-the 0/1/2 like toggles or enums — but nothing was changed on the device to confirm which is
-which, and this document will not guess. To establish them: change one setting on the device,
-copy `.cfg` again, diff. STUdio has no reason to write this file.
+STUdio has no reason to write this file, and now there is a decoded reference for it if it ever
+should. `CFG~1` is a FAT short-name copy of the same bytes.
 
 ---
 
@@ -318,29 +331,38 @@ library and UI design, not a format change; it is tracked as its own issue.
 
 ---
 
-## 10. Unknowns, in the order they are worth attacking
+## 10. Prior art, and what is still open
 
-1. **Three Luniistore packs use a key that is not the device key.** They are the three with an
-   opaque `bt` (§2). Same layout, same 512-byte boundary, but neither the device's AES key nor
-   the XXTEA common key opens `ri`, `li` or an asset. Tried: every 16-byte field of `.md` as key
-   and as IV, raw, word-swapped and reversed, CBC and ECB; XXTEA with the common key and with each
-   of those fields; `bt` itself and `bt` unwrapped with the device key, either half as key or
-   IV. The other six Luniistore packs on the same card open with the device key, so this is
-   a property of those packs (or of how they were delivered), not of official packs in general.
-   `.md` 0x60 and 0x70 are the two unread fields with the right shape to be involved. Nothing
-   in STUdio depends on reading official packs, so this is curiosity unless a feature needs it.
-2. **`.md` 0x3A–0x3F, 0x60, 0x70** — see §2.
-3. **`.cfg`** — see §8. One diff session would settle it.
-4. **The firmware's use of the story pack version** — unobservable without the Luniistore app
-   and an account.
-5. **`uplugged`, `.syncextras`** — empty or zero here; their non-empty form has not been
-   seen. (`.pi.hidden` is accounted for: Lunii.QT, §1.)
-5b. **Does the factory flag really shield a pack from a Luniistore sync?** Testable, but only
-   by syncing with the official app, which is also what would delete a pack if the answer is
-   no. Back up first.
-6. **Whether the "factory" flag matters** — every STUdio pack sets it, every official one
-   clears it, and the device plays both.
-7. **`.md` v1–3, the V2 cipher, the raw (v1) format** — code only, no device.
+The deep firmware work has already been done, by **o-daneel** — this section leans on it for
+everything below the filesystem, and cites it where it settles one of our unknowns:
+
+- [`Lunii.RE`](https://github.com/o-daneel/Lunii.RE) — v1/v2 STM32 firmware reversed in Ghidra:
+  the XXTEA variant and its keys, the `.md`/`.cfg`/`ni`/`li`/`ri`/`si`/`bt` formats, and the
+  hardware. It records that the device is dumpable at all — JTAG left enabled, external flash
+  unciphered.
+- [`Lunii_v3.RE`](https://github.com/o-daneel/Lunii_v3.RE) — the v3 firmware (3.1.x): AES-CBC
+  replacing XXTEA, the two-layer device-key / per-story-key scheme, the perso-area layout
+  (AES key, IV, SNU, Wi-Fi credentials), and RDP level 1. This is what explains our three
+  opaque-`bt` packs (§2a).
+- [`Lunii.QT`](https://github.com/o-daneel/Lunii.QT) — the tool STUdio's own v3 support descends
+  from; see §1.
+
+Still open, in the order worth attacking:
+
+1. **Read one of the three genuine v3 packs (§2a).** Now a known procedure rather than a mystery:
+   decipher its `bt` (32 B) with the device key to recover the per-story key+IV, then decipher the
+   resources with that. Our one attempt did not land — likely the AES word-swap or the key/IV
+   halves — but it is a finite job, not guesswork. STUdio needs none of it; interoperability only.
+2. **`.md` 0x34–0x3F** — a static signature per Lunii.RE (`830441A3…`), not the USB ids as first
+   read here; 0x60/0x70 remain genuinely unread. §2.
+3. **The firmware's use of the story pack version** — playback ignores it (§9); whether the
+   Luniistore app or catalogue reads it is unobservable without an account.
+4. **`uplugged`, `.syncextras`** — empty or zero here; their non-empty form has not been seen.
+5. **Does the factory flag shield a pack from a Luniistore sync?** Every STUdio pack sets it,
+   every official one clears it, and the device plays both. Testable only by syncing with the
+   official app — which is also what deletes a pack if the answer is no. Back up first.
+6. **`.md` v1–3, the V2 cipher, the raw (v1) format** — code only here, but fully covered by
+   Lunii.RE against real v1/v2 devices.
 8. **The v1 vendor SCSI commands (`0xf6 …`) are not exposed by this firmware.** Probed
    read-only through `SG_IO`: `INQUIRY` answers `STM  Product  0.01` (ST's stock mass-storage
    stack); `0xf6 0x24` (read status register) fails at the USB transport level with no sense
