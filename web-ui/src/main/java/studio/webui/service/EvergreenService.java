@@ -29,12 +29,33 @@ public class EvergreenService {
     public static final String GITHUB_API_BUILTIN_ANNOUNCE_CONTENT_EN = "### Good news, everyone!\n\nSTUdio is improving, at a slow but steady pace, and that's primarily thanks to your feedback. Thanks for letting me know what's missing or broken (and also what's not \uD83D\uDE01)!\n\nTo better benefit from this feedback, I wanted a way to communicate directly to you and let you know how STUdio is evolving. So here it is: **a brand new announce mechanism!**\n\nI plan to use it sparsely, to announce major features and occasionally request your feedback (a beta version will be released soon). These announces **are only displayed once**, and **you can opt-out if you feel like it**.\n\nHere's to all the great story packs you're building! \uD83C\uDF7B";
     public static final String GITHUB_API_BUILTIN_ANNOUNCE_CONTENT_FR = "### Good news, everyone!\n\nSTUdio s'améliore, lentement mais sûrement, et le mérite en revient grandement à tous vos retours. Merci de me faire savoir ce qu'il manque ou ce qui est cassé (et aussi ce qui ne l'est pas \uD83D\uDE01) !\n\nPour tirer avantage au mieux de vos retours, je souhaitais pouvoir communiquer directement avec vous pour vous faire part des évolutions de STUdio. Alors le voici : **le tout nouveau mécanisme d'annonces !**\n\nJe prévois de l'utiliser avec parcimonie, pour annoncer les fonctionnalités majeures et faire appel à vous occasionnellement (une version bêta va bientôt voir le jour). Ces annonces **ne s'afficheront qu'une fois**, et **vous pouvez les désactiver si vous le souhaitez**.\n\nÀ tous les packs d'histoires que vous créerez ! \uD83C\uDF7B";
 
+    /**
+     * How long a single GitHub request may take before it is failed. Without a bound, an unreachable or
+     * stalling GitHub (firewalled network, captive portal) leaves the future pending forever and the
+     * frontend stuck on its "fetching" toast. Five seconds is well above a normal round trip to GitHub
+     * and well below what a user would wait at startup.
+     */
+    public static final long HTTP_TIMEOUT_MS = 5_000;
+
     private final Logger LOGGER = LoggerFactory.getLogger(EvergreenService.class);
 
     private ConfigRetriever configRetriever;
     private WebClient webClient;
+    private final String apiHost;
+    private final String rawHost;
+    private final int port;
+    private final boolean ssl;
+    private final long timeoutMs;
 
     public EvergreenService(Vertx vertx) {
+        this(vertx, GITHUB_API_FQDN, GITHUB_RAW_FQDN, 443, true, HTTP_TIMEOUT_MS);
+    }
+
+    /**
+     * Seam for tests: where the GitHub API and raw content are reached, and how long to wait for them.
+     * Production always goes through {@link #EvergreenService(Vertx)}.
+     */
+    EvergreenService(Vertx vertx, String apiHost, String rawHost, int port, boolean ssl, long timeoutMs) {
         ConfigStoreOptions propertiesStore = new ConfigStoreOptions()
                 .setType("file")
                 .setFormat("properties")
@@ -42,6 +63,11 @@ public class EvergreenService {
         ConfigRetrieverOptions options = new ConfigRetrieverOptions().addStore(propertiesStore);
         configRetriever = ConfigRetriever.create(vertx, options);
         webClient = WebClient.create(vertx);
+        this.apiHost = apiHost;
+        this.rawHost = rawHost;
+        this.port = port;
+        this.ssl = ssl;
+        this.timeoutMs = timeoutMs;
     }
 
     public Future<JsonObject> infos() {
@@ -60,8 +86,9 @@ public class EvergreenService {
         // Latest available release (from github)
         Future<JsonObject> future = Future.future();
         webClient
-                .get(443, GITHUB_API_FQDN, GITHUB_API_LATEST_RELEASE)
-                .ssl(true)
+                .get(port, apiHost, GITHUB_API_LATEST_RELEASE)
+                .ssl(ssl)
+                .timeout(timeoutMs)
                 .send(ar -> {
                     if (ar.succeeded()) {
                         future.tryComplete(ar.result().bodyAsJsonObject());
@@ -76,8 +103,9 @@ public class EvergreenService {
         Future<JsonObject> future = Future.future();
         // Get announce's last modification date (from github)
         webClient
-                .get(443, GITHUB_API_FQDN, GITHUB_API_ANNOUNCE_COMMIT)
-                .ssl(true)
+                .get(port, apiHost, GITHUB_API_ANNOUNCE_COMMIT)
+                .ssl(ssl)
+                .timeout(timeoutMs)
                 .send(ar -> {
                     if (ar.succeeded()) {
                         JsonArray commits = ar.result().bodyAsJsonArray();
@@ -91,8 +119,9 @@ public class EvergreenService {
                             String commitDate = commits.getJsonObject(0).getJsonObject("commit").getJsonObject("committer").getString("date");
                             // Get announce content (from github)
                             webClient
-                                    .get(443, GITHUB_RAW_FQDN, GITHUB_API_ANNOUNCE_CONTENT)
-                                    .ssl(true)
+                                    .get(port, rawHost, GITHUB_API_ANNOUNCE_CONTENT)
+                                    .ssl(ssl)
+                                    .timeout(timeoutMs)
                                     .send(ar2 -> {
                                         if (ar2.succeeded()) {
                                             String content = ar2.result().bodyAsString();
