@@ -28,7 +28,7 @@ import Modal from "./Modal";
 import {
     LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT
 } from "../utils/storage";
-import {chooseDropAction, applyProvenanceVerdict} from "../utils/packs";
+import {chooseDropAction, applyProvenanceVerdict, currentVersion, isDowngrade} from "../utils/packs";
 import {verifyConversion} from "../services/library";
 
 import './PackLibrary.css';
@@ -59,6 +59,10 @@ class PackLibrary extends React.Component {
                 data: null
             },
             confirmConversionDialog: {
+                show: false,
+                data: null
+            },
+            confirmDowngradeDialog: {
                 show: false,
                 data: null
             }
@@ -163,8 +167,35 @@ class PackLibrary extends React.Component {
     };
 
     doAddToDevice = (data, path) => {
+        // Every path to the device funnels through here, so this is where a version going backwards
+        // is caught. The device has one slot per UUID and no notion of version: sending a v1 over the
+        // v2 it holds silently replaces the newer story. The user may mean it; they are asked.
+        const onDevice = this.state.device.packs.find(p => p.uuid === data.uuid);
+        if (isDowngrade(this.state.device.packs, data.uuid, data.version)) {
+            this.setState({
+                confirmDowngradeDialog: {
+                    show: true,
+                    data: { pack: data, path, deviceVersion: onDevice.version }
+                }
+            });
+            return;
+        }
+        this.doTransferToDevice(data, path);
+    };
+
+    doTransferToDevice = (data, path) => {
         // Transfer pack and show progress
         this.props.addFromLibrary(data.uuid, path, data.format, this.state.device.metadata.driver, this.context);
+    };
+
+    dismissConfirmDowngradeDialog = (replace) => {
+        return () => {
+            const { pack, path } = this.state.confirmDowngradeDialog.data;
+            this.setState({ confirmDowngradeDialog: { show: false, data: null } });
+            if (replace) {
+                this.doTransferToDevice(pack, path);
+            }
+        };
     };
 
     dismissEnrichedDialog = (allow) => {
@@ -432,6 +463,16 @@ class PackLibrary extends React.Component {
                        ]}
                        onClose={this.dismissConfirmConversionDialog('cancel')}
                 />}
+                {this.state.confirmDowngradeDialog.show &&
+                <Modal id="ask-confirm-downgrade"
+                       title={t('dialogs.library.askConfirmDowngrade.title')}
+                       content={<p>{t('dialogs.library.askConfirmDowngrade.content', { version: this.state.confirmDowngradeDialog.data.pack.version, deviceVersion: this.state.confirmDowngradeDialog.data.deviceVersion })}</p>}
+                       buttons={[
+                           { label: t('dialogs.library.askConfirmDowngrade.cancel'), onClick: this.dismissConfirmDowngradeDialog(false)},
+                           { label: t('dialogs.library.askConfirmDowngrade.replace'), onClick: this.dismissConfirmDowngradeDialog(true)}
+                       ]}
+                       onClose={this.dismissConfirmDowngradeDialog(false)}
+                />}
 
                 {/* Device view, if plugged */}
                 {this.state.device.metadata && <div className="plugged-device">
@@ -567,6 +608,7 @@ class PackLibrary extends React.Component {
                                         </div>
                                         <div className="pack-thumb" title={group.packs[0].nightModeAvailable && t('library.nightMode')}>
                                             <img src={group.packs[0].image || defaultImage} alt="" width="128" height="128" draggable={false} />
+                                            {currentVersion(group.packs) !== undefined && <div className="pack-version" title={t('library.local.currentVersion')}><span>{`v${currentVersion(group.packs)}`}</span></div>}
                                             {group.packs[0].official && <div className="pack-ribbon"><span>{t('library.official')}</span></div>}
                                         </div>
                                     </div>

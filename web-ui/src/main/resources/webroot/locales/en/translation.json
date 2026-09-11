@@ -40,6 +40,7 @@
       "convertPackToFs": "Convert this story pack to FS format (v2.x)",
       "editPack": "Open this story pack in editor",
       "removePack": "Remove this story pack from library",
+      "currentVersion": "Current version in the library",
       "addPack": "Add a story pack to the library"
     },
     "official": "Official",
@@ -328,6 +329,12 @@
         "contentMismatch": "<p>A device-compatible instance of this story pack is already in the library, but STUdio has checked it: it was not made from the pack the library holds now, so it would not send what you have.</p><p>Convert that pack again, or send the existing instance anyway if that is what you want.</p><p>(The converted pack will be stored in the local library)</p>",
         "convert": "Convert again",
         "transfer": "Send the existing one",
+        "cancel": "Cancel"
+      },
+      "askConfirmDowngrade": {
+        "title": "Send an older version?",
+        "content": "The device holds version {{deviceVersion}} of this story; you are about to replace it with version {{version}}. The device keeps one copy per story, so the newer one would be gone from it (it stays in the library).",
+        "replace": "Replace with the older version",
         "cancel": "Cancel"
       }
     },

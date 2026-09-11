@@ -26,7 +26,7 @@
  * rendering stack and this lot does not add one.
  */
 
-const { chooseDropAction, isConversionOutput, applyProvenanceVerdict } = require('./packs');
+const { chooseDropAction, isConversionOutput, applyProvenanceVerdict, currentVersion, isDowngrade } = require('./packs');
 
 // The library lists a pack's artefacts most-recent-first; these fixtures keep that order, and carry
 // the file names the backend actually sends.
@@ -284,5 +284,103 @@ describe('applyProvenanceVerdict', () => {
         expect(applyProvenanceVerdict(convert, 'MATCH')).toBe(convert);
         expect(applyProvenanceVerdict(transfer, 'MISMATCH')).toBe(transfer);
         expect(applyProvenanceVerdict(none, 'UNKNOWN')).toBe(none);
+    });
+});
+
+/*
+ * Several versions of one story in the library.
+ *
+ * The library keeps every archive of a UUID, so a story can exist as v1 and v2 side by side. The
+ * device, on the other hand, has one slot per UUID and no notion of version (FORMATS.md §9). Which
+ * version goes to the device is therefore decided here, and it is the highest one: the version is
+ * the one piece of identity the formats carry for this. The modification time, which used to order
+ * everything, says when a file was written, not what it holds.
+ */
+const versioned = (format, path, version, timestamp) => ({ uuid: 'u', format, path, version, timestamp });
+
+describe('currentVersion', () => {
+
+    it('is the highest version present, wherever it sits in the list', () => {
+        expect(currentVersion([versioned('archive', 'u-v1.zip', 1, 3000), versioned('archive', 'u-v2.zip', 2, 1000)])).toBe(2);
+    });
+
+    it('is undefined when nothing carries a version', () => {
+        expect(currentVersion([pack('archive', 'u.zip', 1000)])).toBeUndefined();
+        expect(currentVersion([])).toBeUndefined();
+        expect(currentVersion(undefined)).toBeUndefined();
+    });
+
+    it('ignores artefacts without a version when at least one has it', () => {
+        expect(currentVersion([pack('fs', 'u.converted_1', 5000), versioned('archive', 'u-v3.zip', 3, 1000)])).toBe(3);
+    });
+});
+
+describe('chooseDropAction across versions', () => {
+
+    it('V1: sends the highest version, not the most recent file', () => {
+        const v1 = versioned('fs', 'u-v1.converted_9000', 1, 9000);
+        const v2 = versioned('archive', 'u-v2.zip', 2, 1000);
+
+        const decision = chooseDropAction([v1, v2], 'fs');
+
+        // The v1 conversion is device-readable and newer, and it is not what the user means: the
+        // story moved on. Nothing of the current version is device-readable, so it is converted.
+        expect(decision.action).toBe('convert');
+        expect(decision.source).toBe(v2);
+        expect(decision.cached).toBeUndefined();
+    });
+
+    it('V2: a conversion of the current version is still reused, with the usual question', () => {
+        const cachedV2 = versioned('fs', 'u-v2.converted_2000', 2, 2000);
+        const sourceV2 = versioned('archive', 'u-v2.zip', 2, 1000);
+        const oldV1 = versioned('archive', 'u-v1.zip', 1, 500);
+
+        const decision = chooseDropAction([cachedV2, sourceV2, oldV1], 'fs');
+
+        expect(decision.action).toBe('confirm');
+        expect(decision.cached).toBe(cachedV2);
+        expect(decision.source).toBe(sourceV2);
+    });
+
+    it('V3: an older version is never the source, even when it is the only non-conversion', () => {
+        // Only a conversion output exists for v2; the v1 archive is the only "source" in the group.
+        // Offering it would re-convert the old story over the new one.
+        const cachedV2 = versioned('fs', 'u-v2.converted_2000', 2, 2000);
+        const oldV1 = versioned('archive', 'u-v1.zip', 1, 500);
+
+        const decision = chooseDropAction([cachedV2, oldV1], 'fs');
+
+        expect(decision.action).toBe('transfer');
+        expect(decision.cached).toBe(cachedV2);
+        expect(decision.source).toBeUndefined();
+    });
+
+    it('V4: artefacts without a version are treated as one group, as before', () => {
+        // Every earlier case in this file builds packs without a version: none of them may change.
+        const cached = pack('fs', 'u.converted_3000', 3000);
+        const source = pack('archive', 'u.zip', 1000);
+
+        expect(chooseDropAction([cached, source], 'fs').action).toBe('confirm');
+    });
+});
+
+describe('isDowngrade', () => {
+    const onDevice = (uuid, version) => ({ uuid, version });
+
+    it('is true when the device holds a higher version of the same story', () => {
+        expect(isDowngrade([onDevice('u', 2)], 'u', 1)).toBe(true);
+    });
+
+    it('is false for the same or a higher version, or a story the device does not hold', () => {
+        expect(isDowngrade([onDevice('u', 2)], 'u', 2)).toBe(false);
+        expect(isDowngrade([onDevice('u', 2)], 'u', 3)).toBe(false);
+        expect(isDowngrade([onDevice('other', 9)], 'u', 1)).toBe(false);
+        expect(isDowngrade([], 'u', 1)).toBe(false);
+    });
+
+    it('is false when either side has no version to compare, rather than guessing', () => {
+        expect(isDowngrade([onDevice('u', undefined)], 'u', 1)).toBe(false);
+        expect(isDowngrade([onDevice('u', 2)], 'u', undefined)).toBe(false);
+        expect(isDowngrade(undefined, 'u', 1)).toBe(false);
     });
 });

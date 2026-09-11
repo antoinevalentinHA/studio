@@ -40,6 +40,7 @@
       "convertPackToFs": "Convertir ce pack d'histoires au format FS (v2.x)",
       "editPack": "Ouvrir ce pack d'histoires dans l'éditeur",
       "removePack": "Supprimer ce pack d'histoires de la bibliothèque",
+      "currentVersion": "Version courante dans la bibliothèque",
       "addPack": "Ajouter un pack d'histoires à la bibliothèque"
     },
     "official": "Officiel",
@@ -328,6 +329,12 @@
         "contentMismatch": "<p>Une instance de ce pack d'histoires compatible avec l'appareil est déjà dans la bibliothèque, mais STUdio l'a vérifiée : elle n'a pas été produite à partir du pack que la bibliothèque contient aujourd'hui, elle n'enverrait donc pas ce que vous avez.</p><p>Reconvertissez ce pack, ou envoyez quand même l'instance existante si c'est ce que vous voulez.</p><p>(Le pack converti sera conservé dans la bibliothèque locale)</p>",
         "convert": "Reconvertir",
         "transfer": "Envoyer l'existante",
+        "cancel": "Annuler"
+      },
+      "askConfirmDowngrade": {
+        "title": "Envoyer une version plus ancienne ?",
+        "content": "La Lunii contient la version {{deviceVersion}} de cette histoire ; vous allez la remplacer par la version {{version}}. La Lunii ne garde qu'un exemplaire par histoire : la plus récente en disparaîtrait (elle reste dans la bibliothèque).",
+        "replace": "Remplacer par l'ancienne version",
         "cancel": "Annuler"
       }
     },

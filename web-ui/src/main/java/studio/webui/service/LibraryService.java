@@ -40,6 +40,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -134,6 +135,18 @@ public class LibraryService {
                 .put("path", libraryPath());
     }
 
+    /**
+     * The order of one story's artefacts: highest story pack version first, and within a version the
+     * most recently modified file first. The first entry is what the UI shows as latest, what a drop
+     * on the device considers first, and what the unofficial metadata is refreshed from. Ordering
+     * by modification time alone let a v1 copied in after the v2 take all three roles; the version
+     * is the one piece of identity the formats carry for this (FORMATS.md §9), so it decides, and
+     * the timestamp only breaks ties.
+     */
+    private static final Comparator<LibraryPack> HIGHEST_VERSION_FIRST = Comparator
+            .comparingInt((LibraryPack p) -> p.getMetadata().getVersion()).reversed()
+            .thenComparing(Comparator.comparingLong(LibraryPack::getTimestamp).reversed());
+
     public JsonArray packs() {
         // Check that local library folder exists
         File libraryFolder = new File(libraryPath());
@@ -153,7 +166,7 @@ public class LibraryService {
                         .entrySet()
                         .forEach(entry -> {
                             List<LibraryPack> packs = entry.getValue();
-                            packs.sort((a, b) -> Long.compare(b.getTimestamp(), a.getTimestamp()));
+                            packs.sort(HIGHEST_VERSION_FIRST);
                             LOGGER.debug("Refreshing metadata for pack `" + entry.getKey() + "` from file `" + packs.get(0).getPath() + "`");
                             this.readPackFile(packs.get(0).getPath()).ifPresent(
                                     meta -> databaseMetadataService.refreshUnofficialMetadata(
@@ -187,8 +200,7 @@ public class LibraryService {
                                         Map.Entry::getKey,
                                         entry -> new JsonArray(
                                                 entry.getValue().stream()
-                                                        // Sort packs by timestamp descending
-                                                        .sorted((a,b) -> Long.compare(b.getTimestamp(), a.getTimestamp()))
+                                                        .sorted(HIGHEST_VERSION_FIRST)
                                                         .map(this::getPackMetadata)
                                                         .collect(Collectors.toList())
                                         )
