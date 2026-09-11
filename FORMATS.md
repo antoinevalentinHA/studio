@@ -44,6 +44,17 @@ Root of the FAT32 partition, as found:
 | `etc/wifi.prefs` | 1160 B | **unknown** | High-entropy blob, i.e. ciphered. Wi-Fi credentials of the Luniistore app, most likely. |
 | `System Volume Information/` | | — | Windows indexer residue, nothing to do with the device. |
 
+Two things about the volume itself, both observed:
+
+- **The firmware leaves the FAT dirty bit set.** After the device has played a story, the next
+  Linux mount logs `Volume was not properly unmounted`, even though the previous host unmount
+  was clean. The Lunii mounts the card to play and does not clear the flag on power-off. Any
+  tool that treats a dirty volume as a reason to refuse would refuse every Lunii that has been
+  used; the driver does not, and should not start to.
+- **The USB serial string is not the `.md` serial.** `lsusb -v` / the kernel log show a 12-digit
+  `iSerialNumber`; `.md` holds a different 14-digit number. Only the latter enters the key
+  material.
+
 STUdio reads `.md`, `.pi` and `.content/`. It never touches the rest, which is the right default:
 the meaning of `.cfg` and the two empty markers is not established, and a wrong write there is a
 write to a device the user cannot easily reflash.
@@ -330,7 +341,8 @@ library and UI design, not a format change; it is tracked as its own issue.
 8. **The v1 vendor SCSI commands (`0xf6 …`) are not exposed by this firmware.** Probed
    read-only through `SG_IO`: `INQUIRY` answers `STM  Product  0.01` (ST's stock mass-storage
    stack); `0xf6 0x24` (read status register) fails at the USB transport level with no sense
-   data, i.e. the device does not recognise the opcode at all. `RawStoryTellerAsyncDriver` is
+   data, and the kernel log shows one `reset high-speed USB device` per attempt: the device
+   stalls on the opcode and is reset by the host — it does not recognise it at all. `RawStoryTellerAsyncDriver` is
    therefore v1-only by construction, and there is no USB path to the internal flash on a
    `0483:a341` device. Nothing else was probed: guessing opcodes on an unknown firmware is how
    one finds a write command by accident.
