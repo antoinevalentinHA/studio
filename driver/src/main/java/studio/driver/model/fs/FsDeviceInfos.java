@@ -12,6 +12,8 @@ public class FsDeviceInfos {
 
     private byte[] uuid;
     private short firmwareMajor, firmwareMinor;
+    /** The firmware version as the device writes it ("3.2.3"), when the metadata format carries it as a string. */
+    private String firmwareVersion;
     private String serialNumber;
     private long sdCardSizeInBytes;
     private long usedSpaceInBytes;
@@ -43,6 +45,14 @@ public class FsDeviceInfos {
 
     public void setFirmwareMajor(short firmwareMajor) {
         this.firmwareMajor = firmwareMajor;
+    }
+
+    public String getFirmwareVersion() {
+        return firmwareVersion;
+    }
+
+    public void setFirmwareVersion(String firmwareVersion) {
+        this.firmwareVersion = firmwareVersion;
     }
 
     public short getFirmwareMinor() {
