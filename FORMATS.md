@@ -38,7 +38,7 @@ Root of the FAT32 partition, as found:
 | `.cfg` | 42 B | **unknown** | Device settings, apparently `(value u16, key u16)` pairs. §8 |
 | `CFG~1` | 42 B | **unknown** | Byte-identical copy of `.cfg`. A FAT short-name artefact of a rename, or a backup. |
 | `.logo` | ~11 KB | **verified format** | A BMP, 320×240, 4-bit, RLE4 — the exact image format of pack assets (§6). The boot logo, presumably. Not read or written by STUdio. |
-| `.pi.hidden` | 0 B | **unknown** | Empty. Name suggests a second index for hidden packs; empty here. |
+| `.pi.hidden` | 0 B | **not a firmware file** | Written by [Lunii.QT](https://github.com/o-daneel/Lunii.QT), not by the device: its "hide stories" feature moves `.pi` entries here so that the Luniistore app does not see them — and does not delete them (see the factory flag, §5). Empty here because nothing is currently hidden. Same 16-byte UUID records as `.pi`, presumably. |
 | `.syncextras` | 4 B | **unknown** | Four zero bytes. |
 | `uplugged` | 0 B | **unknown** | Empty marker, written at the last Luniistore sync. Possibly "unplugged without eject". |
 | `etc/wifi.prefs` | 1160 B | **unknown** | High-entropy blob, i.e. ciphered. Wi-Fi credentials of the Luniistore app, most likely. |
@@ -177,7 +177,7 @@ marks the size change as a `KNOWN GAP` because it invalidates size-based verific
 | 12 | u32 | Number of stage nodes | 18 … 174 |
 | 16 | u32 | Number of images | |
 | 20 | u32 | Number of sounds | |
-| 24 | u8 | "Factory pack" flag | **`1` on every STUdio-made pack, `0` on every Luniistore pack.** The writer hard-codes `1`; the comment says it stops the Luniistore app from inspecting the pack. Nothing on the device side was observed to depend on it. |
+| 24 | u8 | "Factory pack" flag | **`1` on every STUdio-made pack, `0` on every Luniistore pack.** The writer hard-codes `1`; the comment says it stops the Luniistore app from inspecting the pack. The Lunii.QT README states that a Luniistore sync **deletes third-party stories from the card** (it added a "hide" feature to work around it). The two older STUdio-made packs on this card survived a Luniistore sync with the flag set, which is consistent with the flag being what protects them — consistent, not proven. Nothing on the device side depends on it: both values play. |
 | 25 | 487 | Zero | all zero on all twelve packs |
 
 File size is always `512 + nodes × 44` — checked on all twelve.
@@ -333,8 +333,11 @@ library and UI design, not a format change; it is tracked as its own issue.
 3. **`.cfg`** — see §8. One diff session would settle it.
 4. **The firmware's use of the story pack version** — unobservable without the Luniistore app
    and an account.
-5. **`.pi.hidden`, `uplugged`, `.syncextras`** — empty or zero here; their non-empty form has
-   not been seen.
+5. **`uplugged`, `.syncextras`** — empty or zero here; their non-empty form has not been
+   seen. (`.pi.hidden` is accounted for: Lunii.QT, §1.)
+5b. **Does the factory flag really shield a pack from a Luniistore sync?** Testable, but only
+   by syncing with the official app, which is also what would delete a pack if the answer is
+   no. Back up first.
 6. **Whether the "factory" flag matters** — every STUdio pack sets it, every official one
    clears it, and the device plays both.
 7. **`.md` v1–3, the V2 cipher, the raw (v1) format** — code only, no device.
