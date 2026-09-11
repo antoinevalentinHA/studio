@@ -68,6 +68,8 @@ history.
 - Characterization and specification tests covering the metadata, index, detection and write paths.
 - An opt-in FAT32 suite, exercised by hand on a disposable volume — see `TESTING.md`.
 - Five documented sessions of real device operations, on two devices — see `FIELD-VALIDATION.md`.
+- Coverage measured by JaCoCo on every CI run, without a threshold — see `TESTING.md`.
+- How to contribute, and the testing conventions a review holds to — see `CONTRIBUTING.md`.
 
 ## Current status
 

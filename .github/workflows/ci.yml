@@ -61,6 +61,17 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # Coverage, measured by JaCoCo during the same test run (see the root pom). One HTML report
+      # per module; open target/site/jacoco/index.html from the artifact. Nothing fails on it.
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-reports-${{ matrix.os }}
+          path: '**/target/site/jacoco/**'
+          if-no-files-found: ignore
+          retention-days: 7
+
   # The web UI owns the transfer monitoring channel, so it needs its own verdict. Linux only: the
   # code under test is platform-independent, unlike the filesystem semantics the Java job checks on
   # both platforms. Node 12 matches the version the Maven frontend build pins, so CI and a local

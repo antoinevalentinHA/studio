@@ -32,6 +32,7 @@
         <junit.version>5.10.2</junit.version>
         <objenesis.version>3.3</objenesis.version>
         <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
+        <jacoco-maven-plugin.version>0.8.13</jacoco-maven-plugin.version>
     </properties>
 
     <build>
@@ -51,6 +52,33 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <!-- Coverage is measured, not enforced. The report says which lines a test run reached,
+                 per module, under target/site/jacoco; CI keeps it as an artifact. No threshold: the
+                 distribution is uneven by history (see TESTING.md), and a number chosen before it
+                 has been looked at would only block pull requests. The agent attaches to the same
+                 `mvn test` CI already runs, so nothing else changes. -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>coverage-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>coverage-report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 
     <dependencyManagement>
