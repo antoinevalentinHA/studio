@@ -68,6 +68,7 @@ history.
 - Characterization and specification tests covering the metadata, index, detection and write paths.
 - An opt-in FAT32 suite, exercised by hand on a disposable volume — see `TESTING.md`.
 - Five documented sessions of real device operations, on two devices — see `FIELD-VALIDATION.md`.
+- The file formats written down, field by field, with what was verified on a device and what is only what the code does — see `FORMATS.md`.
 
 ## Current status
 
