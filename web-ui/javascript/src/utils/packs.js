@@ -58,6 +58,49 @@ export function isConversionOutput(pack) {
 }
 
 /*
+ * Several versions of one story.
+ *
+ * The library keeps every archive of a UUID, so a story can exist as v1 and v2 side by side; the
+ * device has one slot per UUID and no notion of version (FORMATS.md §9). The story pack version is
+ * the one piece of identity the formats carry for telling the versions apart, so it is what decides
+ * which artefacts are "the story as it is now". The modification time says when a file was written,
+ * not what it holds, and only ever breaks ties within a version.
+ *
+ * Artefacts without a version (older listings, hand-made entries) are not compared: when nothing
+ * carries a version the whole group is current, as it was before versions were considered.
+ */
+function hasVersion(p) {
+    return Boolean(p) && Number.isFinite(p.version);
+}
+
+export function currentVersion(packs) {
+    if (!Array.isArray(packs)) {
+        return undefined;
+    }
+    const versions = packs.filter(hasVersion).map(p => p.version);
+    return versions.length === 0 ? undefined : Math.max(...versions);
+}
+
+function packsOfCurrentVersion(packs) {
+    const current = currentVersion(packs);
+    return current === undefined ? packs : packs.filter(p => hasVersion(p) && p.version === current);
+}
+
+/*
+ * Whether sending `version` of `uuid` would replace a higher version already on the device. The
+ * device cannot tell, so the question is asked here, before the transfer. Missing versions on either
+ * side answer false: there is nothing to compare, and a guard that fires on missing data would block
+ * every legacy pack.
+ */
+export function isDowngrade(devicePacks, uuid, version) {
+    if (!Array.isArray(devicePacks) || !Number.isFinite(version)) {
+        return false;
+    }
+    const onDevice = devicePacks.find(p => p && p.uuid === uuid);
+    return hasVersion(onDevice) && onDevice.version > version;
+}
+
+/*
  * Decide what to do when a pack is dropped onto a device.
  *
  * `packs` are one UUID's artefacts as the library lists them, most recent first; `driverFormat` is
@@ -96,9 +139,12 @@ export function chooseDropAction(packs, driverFormat) {
     if (!Array.isArray(packs) || packs.length === 0) {
         return { action: 'none', source: undefined, cached: undefined };
     }
-    const cached = packs.find(p => p.format === driverFormat);
-    const convertible = packs.find(p => p.format !== driverFormat);
-    const sourceCandidate = packs.find(p => p.format !== driverFormat && !isConversionOutput(p));
+    // Only the current version is a candidate for the device. An older version's conversion may
+    // be device-readable and newer on disk; it is still not the story the user means to send.
+    const current = packsOfCurrentVersion(packs);
+    const cached = current.find(p => p.format === driverFormat);
+    const convertible = current.find(p => p.format !== driverFormat);
+    const sourceCandidate = current.find(p => p.format !== driverFormat && !isConversionOutput(p));
 
     if (!cached) {
         // Nothing the device can read: convert. There is no cached artefact to compare anything
