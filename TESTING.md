@@ -79,8 +79,34 @@ Nothing here touches a device. Fixtures are synthesised in code; no device data 
 | Java, with `-Dstudio.test.fat32.root=<volume>` | last measured at **172** before the C6d-5 additions; not re-measured since, because it needs the volume mounted |
 | JavaScript | **57** |
 
+The `agent` module has no tests, and that is a decision rather than an oversight. It is a Java
+agent (`-javaagent`) that instruments the official Luniistore application with Byte Buddy —
+`HttpURLConnection` and one of Luniistore's own DTO classes — to let it show unofficial packs. Its
+behaviour only exists inside a process this project does not ship, against classes whose names and
+shapes belong to a third party. A test would either mock those classes into meaninglessness or
+require the Luniistore installed; neither establishes anything. The module is 261 lines, changes
+rarely, and its two advice classes are exercised by hand when the Luniistore updates.
+
 On Linux the Java totals are the same with a higher skip count, because the Windows-only cases are
 skipped rather than absent.
+
+## Coverage measurement
+
+JaCoCo runs during `mvn test` and writes one report per module under `target/site/jacoco/`
+(`index.html` for reading, `jacoco.csv` for scripting); CI uploads them as the `jacoco-reports-<os>`
+artifact. There is no threshold. The first measurement, Linux, standard suite, no FAT32 volume:
+
+| Module | Lines covered |
+| --- | --- |
+| `core` | 31 % |
+| `driver` | 46 % |
+| `metadata` | 31 % |
+| `web-ui` | 40 % |
+| `agent` | — (no tests, see above) |
+
+These are low and uneven, which is what the counts above could not show. The FAT32 suite and the
+Windows-only cases add to `driver` on the platforms that run them. The numbers are here to be
+compared against, not to be met.
 
 ## Coverage map
 
