@@ -278,8 +278,14 @@ The facts, all verified above, for the question "can one story exist in several 
 1. **The story pack version** is a `u16` at offset 2 of `ni`, `"version"` in `story.json`, a
    `u16` in the raw format's first sector. It travels through every format, the editor edits it
    (`editor.metadata.version`), the library names its archives `<title>-<uuid>-v<version>.zip`,
-   and the device stores it. **Whether the firmware or the Luniistore app does anything with
-   it is unknown** — the twelve Luniistore packs all say `1`, and the Lunii has no display.
+   and the device stores it. **The firmware does not gate playback on it** — tested: the
+   version byte of a `v2` pack on the card was patched to `1` in place (`ni` is clear, one byte,
+   nothing else touched), the device was unplugged and the story played normally, menus
+   included; the byte was then restored. Whether anything *reads* the field remains unknown —
+   the nine Luniistore packs all say `1`, and the Lunii has no display to show it. Also
+   observed during that session: the firmware wrote nothing to the card (`.pi`, `.cfg`, the
+   empty markers and the pack folders kept their timestamps), so there is no device-side
+   state to reconcile with.
 2. **The device identifies a story by its UUID only** (`.pi`, folder name). Same UUID → same
    slot → the upload replaces. Different UUID → a second story, unrelated as far as the device
    knows, even if it is byte-for-byte the same graph.
