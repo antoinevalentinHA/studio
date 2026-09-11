@@ -9,7 +9,6 @@ import { connect } from 'react-redux';
 import { ToastContainer, toast } from 'react-toastify';
 import {createEventBusChannel, CHANNEL_OPEN, CHANNEL_CLOSED} from './services/eventBusChannel';
 import { withTranslation } from 'react-i18next';
-import marked from 'marked';
 import 'react-toastify/dist/ReactToastify.css';
 import Switch from "react-switch";
 
@@ -33,6 +32,7 @@ import {
     setAllowEnriched
 } from "./actions";
 import {generateFilename} from "./utils/packs";
+import {renderMarkdown} from "./utils/html";
 import {
     LOCAL_STORAGE_ANNOUNCE_LAST_SHOWN
 } from "./utils/storage";
@@ -201,7 +201,7 @@ class App extends React.Component {
                     {this.state.announce && <Modal id={`announce-dialog`}
                                                    className="announce-dialog"
                                                    title={"\uD83E\uDD41 \uD83E\uDD41 \uD83E\uDD41"}
-                                                   content={<div dangerouslySetInnerHTML={{__html: marked(this.state.announce)}} ></div>}
+                                                   content={<div dangerouslySetInnerHTML={{__html: renderMarkdown(this.state.announce)}} ></div>}
                                                    buttons={[
                                                        { label: t('dialogs.announce.optout'), onClick: this.announceOptOut },
                                                        { label: t('dialogs.shared.ok'), onClick: this.dismissAnnounceDialog }

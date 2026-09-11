@@ -29,6 +29,7 @@ import {
     LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT
 } from "../utils/storage";
 import {chooseDropAction, applyProvenanceVerdict} from "../utils/packs";
+import {sanitizeHtml} from "../utils/html";
 import {verifyConversion} from "../services/library";
 
 import './PackLibrary.css';
@@ -412,7 +413,7 @@ class PackLibrary extends React.Component {
                 {this.state.allowEnrichedDialog.show &&
                 <Modal id="ask-allow-enriched"
                        title={t('dialogs.library.askAllowEnriched.title')}
-                       content={<div dangerouslySetInnerHTML={{__html: t('dialogs.library.askAllowEnriched.content')}} ></div>}
+                       content={<div dangerouslySetInnerHTML={{__html: sanitizeHtml(t('dialogs.library.askAllowEnriched.content'))}} ></div>}
                        buttons={[
                            { label: t('dialogs.shared.no'), onClick: this.dismissEnrichedDialog(false)},
                            { label: t('dialogs.shared.yes'), onClick: this.dismissEnrichedDialog(true)}
@@ -422,9 +423,9 @@ class PackLibrary extends React.Component {
                 {this.state.confirmConversionDialog.show &&
                 <Modal id="ask-confirm-conversion"
                        title={t('dialogs.library.askConfirmConversion.title')}
-                       content={<div dangerouslySetInnerHTML={{__html: t(this.state.confirmConversionDialog.data.verdict === 'MISMATCH'
+                       content={<div dangerouslySetInnerHTML={{__html: sanitizeHtml(t(this.state.confirmConversionDialog.data.verdict === 'MISMATCH'
                            ? 'dialogs.library.askConfirmConversion.contentMismatch'
-                           : 'dialogs.library.askConfirmConversion.content')}} ></div>}
+                           : 'dialogs.library.askConfirmConversion.content'))}} ></div>}
                        buttons={[
                            { label: t('dialogs.library.askConfirmConversion.cancel'), onClick: this.dismissConfirmConversionDialog('cancel')},
                            { label: t('dialogs.library.askConfirmConversion.transfer'), onClick: this.dismissConfirmConversionDialog('transfer')},
