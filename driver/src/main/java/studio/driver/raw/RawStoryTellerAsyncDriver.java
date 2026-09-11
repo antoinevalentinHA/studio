@@ -512,10 +512,9 @@ public class RawStoryTellerAsyncDriver {
         LOGGER.info("Dumping sector " + sector + " into " + dest);
         return LibUsbMassStorageHelper.asyncReadSDSectors(handle, sector, (short) 1)
                 .thenAccept(read -> {
-                    try {
-                        FileOutputStream sectorOutputStream = new FileOutputStream(dest);
+                    // try-with-resources: a write failure must not leave the dump file locked on Windows
+                    try (FileOutputStream sectorOutputStream = new FileOutputStream(dest)) {
                         writeByteBufferToStream(read, sectorOutputStream);
-                        sectorOutputStream.close();
                     } catch (IOException e) {
                         throw new StoryTellerException("Failed to dump sector " + sector + " from SD card.", e);
                     }
