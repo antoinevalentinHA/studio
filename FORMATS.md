@@ -327,3 +327,10 @@ library and UI design, not a format change; it is tracked as its own issue.
 6. **Whether the "factory" flag matters** — every STUdio pack sets it, every official one
    clears it, and the device plays both.
 7. **`.md` v1–3, the V2 cipher, the raw (v1) format** — code only, no device.
+8. **The v1 vendor SCSI commands (`0xf6 …`) are not exposed by this firmware.** Probed
+   read-only through `SG_IO`: `INQUIRY` answers `STM  Product  0.01` (ST's stock mass-storage
+   stack); `0xf6 0x24` (read status register) fails at the USB transport level with no sense
+   data, i.e. the device does not recognise the opcode at all. `RawStoryTellerAsyncDriver` is
+   therefore v1-only by construction, and there is no USB path to the internal flash on a
+   `0483:a341` device. Nothing else was probed: guessing opcodes on an unknown firmware is how
+   one finds a write command by accident.
