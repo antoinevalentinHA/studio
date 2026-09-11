@@ -11,6 +11,7 @@ import { createStore, applyMiddleware } from 'redux';
 import thunkMiddleware from 'redux-thunk';
 
 import App from './App';
+import ErrorBoundary from './components/ErrorBoundary';
 import rootReducer from './reducers';
 import './i18n';
 
@@ -23,10 +24,12 @@ const store = createStore(
 );
 
 ReactDOM.render(
-    <Provider store={store}>
-        <Suspense fallback="Loading...">
-            <App />
-        </Suspense>
-    </Provider>,
+    <ErrorBoundary>
+        <Provider store={store}>
+            <Suspense fallback="Loading...">
+                <App />
+            </Suspense>
+        </Provider>
+    </ErrorBoundary>,
     document.getElementById('root')
 );

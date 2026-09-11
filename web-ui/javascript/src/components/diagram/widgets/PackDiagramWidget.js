@@ -23,6 +23,7 @@ import TrayItemWidget from "./TrayItemWidget";
 import Modal from "../../Modal";
 import {setEditorDiagram, setEditorFilename, setDiagramErrors} from "../../../actions";
 import {generateFilename} from "../../../utils/packs";
+import {parseJson} from "../../../utils/json";
 
 
 class PackDiagramWidget extends React.Component {
@@ -146,7 +147,10 @@ class PackDiagramWidget extends React.Component {
             // Ignore missing node data
             return;
         }
-        var data = JSON.parse(nodeData);
+        var data = parseJson(nodeData);
+        if (!data) {
+            return;
+        }
         var node = null;
         switch (data.type) {
             case "stage":

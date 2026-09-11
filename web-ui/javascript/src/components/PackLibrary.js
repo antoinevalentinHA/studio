@@ -26,9 +26,11 @@ import {
 import {AppContext} from "../AppContext";
 import Modal from "./Modal";
 import {
-    LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT
+    LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT,
+    safeGetItem
 } from "../utils/storage";
 import {chooseDropAction, applyProvenanceVerdict} from "../utils/packs";
+import {parseJson} from "../utils/json";
 import {verifyConversion} from "../services/library";
 
 import './PackLibrary.css';
@@ -87,7 +89,11 @@ class PackLibrary extends React.Component {
             // Ignore missing node data
             return;
         }
-        var data = JSON.parse(packData);
+        var data = parseJson(packData);
+        if (!data) {
+            // A payload that is not JSON: not something this handler produced, so nothing to do
+            return;
+        }
 
         const driverFormat = this.state.device.metadata.driver;
         // Which artefact goes to the device is decided in utils/packs. It compares no timestamps and
@@ -113,7 +119,7 @@ class PackLibrary extends React.Component {
         if (action === 'convert') {   // No compatible pack: convert the source
             console.log('pack must be converted for driver: %s', driverFormat);
             // Ask for enriched raw format preference
-            if (driverFormat === 'raw' && localStorage.getItem(LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT) === null) {
+            if (driverFormat === 'raw' && safeGetItem(LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT) === null) {
                 this.setState({
                     allowEnrichedDialog: {
                         show: true,
@@ -278,8 +284,11 @@ class PackLibrary extends React.Component {
             // Otherwise ignore missing node data / file
             return;
         }
-        var data = JSON.parse(packData);
-        
+        var data = parseJson(packData);
+        if (!data) {
+            return;
+        }
+
         // Transfer pack and show progress
         this.props.addToLibrary(data.uuid, this.state.device.metadata.driver, this.context);
     };
@@ -309,7 +318,7 @@ class PackLibrary extends React.Component {
 
     onConvertLibraryPack = (pack, format) => {
         return () => {
-            if (format === 'raw' && localStorage.getItem(LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT) === null) {
+            if (format === 'raw' && safeGetItem(LOCAL_STORAGE_ALLOW_ENRICHED_BINARY_FORMAT) === null) {
                 // Ask for enriched raw format preference
                 this.setState({
                     allowEnrichedDialog: {

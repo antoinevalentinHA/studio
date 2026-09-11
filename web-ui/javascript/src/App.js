@@ -34,7 +34,9 @@ import {
 } from "./actions";
 import {generateFilename} from "./utils/packs";
 import {
-    LOCAL_STORAGE_ANNOUNCE_LAST_SHOWN
+    LOCAL_STORAGE_ANNOUNCE_LAST_SHOWN,
+    safeGetItem,
+    safeSetItem
 } from "./utils/storage";
 
 import './App.css';
@@ -142,7 +144,7 @@ class App extends React.Component {
         if (nextProps.evergreen.announce !== this.props.evergreen.announce && nextProps.evergreen.announce !== null) {
             // Check last announce display time in local storage and compare to announce time
             let announceTime = Date.parse(nextProps.evergreen.announce.date);
-            let lastAnnounceShown = localStorage.getItem(LOCAL_STORAGE_ANNOUNCE_LAST_SHOWN) || 0;
+            let lastAnnounceShown = safeGetItem(LOCAL_STORAGE_ANNOUNCE_LAST_SHOWN) || 0;
             console.log('announce: ' + announceTime);
             console.log('last shown: ' + lastAnnounceShown);
             if (announceTime > lastAnnounceShown) {
@@ -167,7 +169,7 @@ class App extends React.Component {
     };
 
     dismissAnnounceDialog = () => {
-        localStorage.setItem(LOCAL_STORAGE_ANNOUNCE_LAST_SHOWN, Date.now());
+        safeSetItem(LOCAL_STORAGE_ANNOUNCE_LAST_SHOWN, Date.now());
         this.setState({announce: null});
     };
 
