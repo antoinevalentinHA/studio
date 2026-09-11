@@ -72,12 +72,20 @@ class DeviceMetadataCharacterizationTest {
      * digit, 21 skipped, 24-byte serial, 14 skipped, then 32 bytes of `bt` (v6) or key+iv (v7).
      */
     private byte[] metadataV6to7(int version, char major, char minor, String serial24) {
+        return metadataV6to7(version, major + "." + minor, serial24);
+    }
+
+    /**
+     * Same layout, with the firmware field given whole. On a real v7 card it is a NUL-terminated
+     * ASCII string in a 6-byte field ("3.2.3\0", FORMATS.md §2); the digit-per-component fixture
+     * above is the shape the parser used to assume.
+     */
+    private byte[] metadataV6to7(int version, String firmware, String serial24) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         writeLittleEndianShort(out, version);
-        out.write(major);
-        out.write('.');
-        out.write(minor);
-        out.write(new byte[21], 0, 21);
+        byte[] fw = firmware.getBytes(StandardCharsets.US_ASCII);
+        out.write(fw, 0, fw.length);
+        out.write(new byte[24 - fw.length], 0, 24 - fw.length);
         byte[] serial = new byte[24];
         byte[] raw = serial24.getBytes(StandardCharsets.US_ASCII);
         System.arraycopy(raw, 0, serial, 0, Math.min(raw.length, 24));
@@ -153,6 +161,43 @@ class DeviceMetadataCharacterizationTest {
     }
 
     // ---------------------------------------------------------------- rejected versions
+
+    @Test
+    @DisplayName("the firmware field is a dotted string, and every component is read whole")
+    void firmwareVersionIsReadAsAString() throws Exception {
+        // Read from a real v7 card: "3.2.3" followed by a NUL. The parser used to take one digit
+        // per component and drop the rest, so "3.10.1" came back as 3.1 and "10.0.0" as 1.0.
+        FsDeviceInfos real = readInfos(metadataV6to7(7, "3.2.3\0", "SN0123456789ABCDEF012345"));
+        assertEquals(3, real.getFirmwareMajor());
+        assertEquals(2, real.getFirmwareMinor());
+        assertEquals("3.2.3", real.getFirmwareVersion());
+
+        FsDeviceInfos twoDigitMinor = readInfos(metadataV6to7(7, "3.10.1\0", "SN0123456789ABCDEF012345"));
+        assertEquals(3, twoDigitMinor.getFirmwareMajor());
+        assertEquals(10, twoDigitMinor.getFirmwareMinor());
+        assertEquals("3.10.1", twoDigitMinor.getFirmwareVersion());
+
+        FsDeviceInfos twoDigitMajor = readInfos(metadataV6to7(6, "10.0.0\0", "SN0123456789ABCDEF012345"));
+        assertEquals(10, twoDigitMajor.getFirmwareMajor());
+        assertEquals(0, twoDigitMajor.getFirmwareMinor());
+        assertEquals("10.0.0", twoDigitMajor.getFirmwareVersion());
+
+        // Two components only, as the old fixtures write it: still fine, no patch level.
+        FsDeviceInfos noPatch = readInfos(metadataV6to7(7, "3.3", "SN0123456789ABCDEF012345"));
+        assertEquals(3, noPatch.getFirmwareMajor());
+        assertEquals(3, noPatch.getFirmwareMinor());
+        assertEquals("3.3", noPatch.getFirmwareVersion());
+    }
+
+    @Test
+    @DisplayName("reading the firmware whole does not move the serial or the key material")
+    void firmwareStringLeavesTheOffsetsAlone() throws Exception {
+        FsDeviceInfos infos = readInfos(metadataV6to7(7, "3.2.3\0", "SN0123456789ABCDEF012345"));
+
+        assertEquals("SN0123456789ABCDEF012345", infos.getSerialNumber());
+        assertEquals((byte) 0xC0, infos.getDeviceKeyV3().getAesKey()[0]);
+        assertEquals((byte) 0xD0, infos.getDeviceKeyV3().getAesIv()[0]);
+    }
 
     @Test
     @DisplayName("versions 4 and 5 fall in the gap between the two parsers and are rejected")

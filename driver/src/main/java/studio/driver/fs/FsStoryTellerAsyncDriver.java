@@ -215,16 +215,24 @@ public class FsStoryTellerAsyncDriver {
     }
 
     private void parseDeviceInfosMeta6to7(FsDeviceInfos infos, short mdVersion, FileInputStream deviceMetadataFis) throws IOException {
-        // Firmware version
-        short major = readAsciiToShort(deviceMetadataFis, 1);
-        deviceMetadataFis.skip(1);
-        short minor = readAsciiToShort(deviceMetadataFis, 1);
+        // Firmware version: a NUL-terminated ASCII string in a 6-byte field ("3.2.3\0" on a real v7
+        // card, FORMATS.md §2). It used to be read as one digit per component, which dropped the
+        // patch level and would misread "3.10" as 3.1. The field is read whole; the serial and the
+        // key material keep their offsets.
+        String firmware = readAsciiString(deviceMetadataFis, FIRMWARE_FIELD_LENGTH);
+        String[] components = firmware.split("\\.");
+        if (components.length < 2) {
+            throw new StoryTellerException("Unreadable firmware version in device metadata: \"" + firmware + "\"");
+        }
+        short major = Short.parseShort(components[0]);
+        short minor = Short.parseShort(components[1]);
         infos.setFirmwareMajor(major);
         infos.setFirmwareMinor(minor);
-        LOGGER.fine("Firmware version: " + major + "." + minor);
+        infos.setFirmwareVersion(firmware);
+        LOGGER.fine("Firmware version: " + firmware);
 
         // Serial number
-        deviceMetadataFis.skip(21);
+        deviceMetadataFis.skip(24 - FIRMWARE_FIELD_LENGTH);
         byte[] snBytes = deviceMetadataFis.readNBytes(24);
         String serialNumber = new String(snBytes);
         LOGGER.info("Serial Number: " + serialNumber);
@@ -281,12 +289,14 @@ public class FsStoryTellerAsyncDriver {
         return bb.getLong();
     }
 
-    private short readAsciiToShort(FileInputStream fis, int numberBytes) throws IOException {
-        return Short.parseShort(new String(fis.readNBytes(numberBytes), StandardCharsets.UTF_8));
-    }
+    /** Width of the firmware version field in a v6/v7 `.md`; the string inside is NUL-terminated. */
+    private static final int FIRMWARE_FIELD_LENGTH = 6;
 
-    private long readAsciiToLong(FileInputStream fis, int numberBytes) throws IOException {
-        return Long.parseLong(new String(fis.readNBytes(numberBytes), StandardCharsets.UTF_8));
+    /** The ASCII string in a fixed-width field: everything before the first NUL, trimmed. */
+    private String readAsciiString(FileInputStream fis, int fieldLength) throws IOException {
+        String field = new String(fis.readNBytes(fieldLength), StandardCharsets.US_ASCII);
+        int nul = field.indexOf('\0');
+        return (nul == -1 ? field : field.substring(0, nul)).trim();
     }
 
 
