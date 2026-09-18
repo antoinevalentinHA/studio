@@ -61,6 +61,11 @@ history.
   without asking. A difference, or anything it cannot establish, asks.
 - Conversions made before this existed carry no such record, so they are never assumed to match. They
   ask, once, and re-converting produces one that no longer will.
+- A zip that holds a pack in the device's own layout — `ni`, `ri`, `si` and the asset folders,
+  usually copied straight off an SD card — can be added to the library. It is unpacked into a folder
+  on upload, named after the zip's top-level folder (the pack's UUID) when there is one, and the
+  library reads it as it reads any pack folder. Such zips used to be dropped from the listing for
+  want of a `story.json`.
 
 **Testing**
 
