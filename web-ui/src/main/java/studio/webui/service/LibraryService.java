@@ -626,6 +626,12 @@ public class LibraryService {
         try {
             // Copy temporary file to local library
             File src = new File(uploadedFilePath);
+            if (destPath != null && destPath.endsWith(".zip")) {
+                Optional<String> packPrefix = FsPackZipImporter.packPrefix(src.toPath());
+                if (packPrefix.isPresent()) {
+                    return addZippedPackFolder(destPath, src.toPath(), packPrefix.get());
+                }
+            }
             Optional<Path> destination = libraryEntry(destPath);
             if (!destination.isPresent()) {
                 // Refused before anything is deleted, moved or created.
@@ -645,6 +651,41 @@ public class LibraryService {
             LOGGER.error("Failed to add pack to local library", e);
             throw new RuntimeException(e);
         }
+    }
+
+    /**
+     * An uploaded zip that holds a pack folder — the device's own layout, see
+     * {@link FsPackZipImporter} — becomes a folder of the library, and the zip is not kept. The
+     * library reads that layout from a folder already; a zip of it was handed to the archive reader
+     * and dropped from the listing for want of a {@code story.json}.
+     *
+     * <p>The folder is named after the zip's top-level folder when there is one, since that is where
+     * the reader takes the pack's UUID from, and after the upload otherwise. Unpacking happens in
+     * the work folder first, so that a zip refused part-way through leaves nothing in the library.
+     */
+    private boolean addZippedPackFolder(String destPath, Path uploaded, String packPrefix) throws IOException {
+        String folderName = packPrefix.isEmpty()
+                ? destPath.substring(0, destPath.length() - ".zip".length())
+                : packPrefix.substring(0, packPrefix.length() - 1);
+        Optional<Path> destination = libraryEntry(folderName);
+        if (!destination.isPresent()) {
+            return false;
+        }
+        Path unpacked = Files.createTempDirectory(Paths.get(tmpDirPath()), "import-");
+        try {
+            FsPackZipImporter.unpack(uploaded, packPrefix, unpacked);
+        } catch (IOException e) {
+            LOGGER.warn("Refused a zipped pack folder: " + e.getMessage());
+            FileUtils.deleteQuietly(unpacked.toFile());
+            return false;
+        }
+        File dest = destination.get().toFile();
+        if (dest.exists()) {
+            FileUtils.deleteDirectory(dest);
+        }
+        FileUtils.moveDirectory(unpacked.toFile(), dest);
+        Files.delete(uploaded);
+        return true;
     }
 
     public boolean deletePack(String packPath) {
