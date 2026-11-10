@@ -43,8 +43,7 @@ public class ArchiveStoryPackReader {
             if (!entry.isDirectory() && entry.getName().equalsIgnoreCase("story.json")) {
                 hasStoryJsonEntry = true;
 
-                JsonParser parser = new JsonParser();
-                JsonObject root = parser.parse(new InputStreamReader(zis)).getAsJsonObject();
+                JsonObject root = JsonParser.parseReader(new InputStreamReader(zis)).getAsJsonObject();
 
                 // Read metadata
                 metadata.setVersion(root.get("version").getAsShort());
@@ -104,8 +103,7 @@ public class ArchiveStoryPackReader {
         while((entry = zis.getNextEntry()) != null) {
             // Story descriptor file: story.json
             if (!entry.isDirectory() && entry.getName().equalsIgnoreCase("story.json")) {
-                JsonParser parser = new JsonParser();
-                JsonObject root = parser.parse(new InputStreamReader(zis)).getAsJsonObject();
+                JsonObject root = JsonParser.parseReader(new InputStreamReader(zis)).getAsJsonObject();
 
                 // Read metadata
                 version = root.get("version").getAsShort();

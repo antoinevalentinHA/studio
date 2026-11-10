@@ -41,7 +41,7 @@ public class DatabaseMetadataService {
                 String databasePath = System.getProperty(OFFICIAL_DB_PROP, System.getProperty("user.home") + OFFICIAL_DB_JSON_PATH);
                 JsonObject officialRoot;
                 try (FileReader databaseReader = new FileReader(databasePath)) {
-                    officialRoot = new JsonParser().parse(databaseReader).getAsJsonObject();   // throws IllegalStateException
+                    officialRoot = JsonParser.parseReader(databaseReader).getAsJsonObject();   // throws IllegalStateException
                 }
                 // Support newer file format which has an additional wrapper: { "code": "0.0", "response": { ...
                 final JsonObject packsRoot = (officialRoot.keySet().contains("response")) ? officialRoot.getAsJsonObject("response") : officialRoot;
@@ -124,7 +124,7 @@ public class DatabaseMetadataService {
             String databasePath = System.getProperty(UNOFFICIAL_DB_PROP, System.getProperty("user.home") + UNOFFICIAL_DB_JSON_PATH);
             JsonObject unofficialRoot;
             try (FileReader databaseReader = new FileReader(databasePath)) {
-                unofficialRoot = new JsonParser().parse(databaseReader).getAsJsonObject();
+                unofficialRoot = JsonParser.parseReader(databaseReader).getAsJsonObject();
             }
             if (unofficialRoot.has(uuid)) {
                 JsonObject packMetadata = unofficialRoot.getAsJsonObject(uuid);
@@ -178,11 +178,10 @@ public class DatabaseMetadataService {
             if (tokenStatusCode == 200) {
                 // OK, read response body
                 InputStream inputStream = tokenConnection.getInputStream();
-                JsonParser parser = new JsonParser();
                 String token;
                 try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
                     // Extract token from response body
-                    JsonObject tokenJson = parser.parse(new JsonReader(bufferedReader)).getAsJsonObject();
+                    JsonObject tokenJson = JsonParser.parseReader(new JsonReader(bufferedReader)).getAsJsonObject();
                     token = tokenJson.getAsJsonObject("response").getAsJsonObject("token").get("server").getAsString();
                 }
                 LOGGER.fine("Guest token: " + token);
@@ -202,7 +201,7 @@ public class DatabaseMetadataService {
                     JsonObject response;
                     try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
                         // Extract metadata database from response body
-                        JsonObject json = parser.parse(new JsonReader(bufferedReader)).getAsJsonObject();
+                        JsonObject json = JsonParser.parseReader(new JsonReader(bufferedReader)).getAsJsonObject();
                         response = json.get("response").getAsJsonObject();
                     }
 
@@ -231,7 +230,7 @@ public class DatabaseMetadataService {
             String databasePath = System.getProperty(UNOFFICIAL_DB_PROP, System.getProperty("user.home") + UNOFFICIAL_DB_JSON_PATH);
             JsonObject unofficialRoot;
             try (FileReader databaseReader = new FileReader(databasePath)) {
-                unofficialRoot = new JsonParser().parse(databaseReader).getAsJsonObject();
+                unofficialRoot = JsonParser.parseReader(databaseReader).getAsJsonObject();
             }
 
             // Replace or add pack metadata
@@ -264,7 +263,7 @@ public class DatabaseMetadataService {
             String databasePath = System.getProperty(UNOFFICIAL_DB_PROP, System.getProperty("user.home") + UNOFFICIAL_DB_JSON_PATH);
             JsonObject unofficialRoot;
             try (FileReader databaseReader = new FileReader(databasePath)) {
-                unofficialRoot = new JsonParser().parse(databaseReader).getAsJsonObject();
+                unofficialRoot = JsonParser.parseReader(databaseReader).getAsJsonObject();
             }
             List<String> toClean = new ArrayList<>();
             for (String uuid : unofficialRoot.keySet()) {
