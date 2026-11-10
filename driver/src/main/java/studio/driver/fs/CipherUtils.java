@@ -53,15 +53,18 @@ public class CipherUtils {
         // Compute specific key
         byte[] specificKey = computeSpecificKeyV2FromUUID(deviceUuid);
         // Read ciphered block of ri file
-        FileInputStream riFis = new FileInputStream(new File(packFolder.toFile(), FsStoryPackReader.IMAGE_INDEX_FILENAME));
-        byte[] riCipheredBlock = riFis.readNBytes(CIPHER_BLOCK_SIZE_BOOT_V2);
-        riFis.close();
+        // Both streams are closed by try-with-resources: a handle left open by an exception would keep the
+        // file locked on Windows, and the pack folder could then neither be completed nor removed.
+        byte[] riCipheredBlock;
+        try (FileInputStream riFis = new FileInputStream(new File(packFolder.toFile(), FsStoryPackReader.IMAGE_INDEX_FILENAME))) {
+            riCipheredBlock = riFis.readNBytes(CIPHER_BLOCK_SIZE_BOOT_V2);
+        }
         // Add boot file: bt
-        FileOutputStream btFos = new FileOutputStream(new File(packFolder.toFile(), BOOT_FILENAME));
-        // The first **scrambled** 64 bytes of 'ri' file must be ciphered with the device-specific key into 'bt' file
-        byte[] btCiphered = cipherFirstBlockSpecificKeyV2(riCipheredBlock, specificKey);
-        btFos.write(btCiphered);
-        btFos.close();
+        try (FileOutputStream btFos = new FileOutputStream(new File(packFolder.toFile(), BOOT_FILENAME))) {
+            // The first **scrambled** 64 bytes of 'ri' file must be ciphered with the device-specific key into 'bt' file
+            byte[] btCiphered = cipherFirstBlockSpecificKeyV2(riCipheredBlock, specificKey);
+            btFos.write(btCiphered);
+        }
     }
 
     static void addBootFileV3(Path packFolder, FsDeviceKeyV3 deviceKeyV3) throws IOException {

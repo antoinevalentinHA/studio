@@ -56,10 +56,11 @@ public class UnofficialMetadataAdvice {
                         String cacheFilePath = luniitheque + "/images/" + UUID.nameUUIDFromBytes(("http:/" + imagePath).getBytes()).toString();
                         logger.info("Storing unofficial metadata image into local filesystem with path: " + cacheFilePath);
 
-                        FileOutputStream fos = new FileOutputStream(cacheFilePath);
-                        byte[] bytes = Base64.getDecoder().decode(meta.getThumbnail().substring(meta.getThumbnail().indexOf(";base64,") + 8));
-                        fos.write(bytes);
-                        fos.close();
+                        // try-with-resources: a malformed thumbnail must not leave the cache file handle open
+                        try (FileOutputStream fos = new FileOutputStream(cacheFilePath)) {
+                            byte[] bytes = Base64.getDecoder().decode(meta.getThumbnail().substring(meta.getThumbnail().indexOf(";base64,") + 8));
+                            fos.write(bytes);
+                        }
                     }
 
                     // Generate JSON document with unofficial metadata
